@@ -1,6 +1,6 @@
 # STATUS — Arf
 
-Son güncelleme: 2026-10-17 14:55 — Claude (metrics.py + 34 pytest + demo taraması)
+Son güncelleme: 2026-10-17 15:10 — Claude (Fuji entegrasyonu: chain.py + 4 canlı senaryo)
 
 ## Adımlar
 | # | Adım | Durum | Not |
@@ -11,7 +11,7 @@ Son güncelleme: 2026-10-17 14:55 — Claude (metrics.py + 34 pytest + demo tara
 | 3 | pick_pairs.py → pairs.json | bitti | hisse/ETF tokenleri hariç, 20 parite yeniden seçildi (13:14) |
 | 4 | logger.py arka planda | bitti | başlangıç: 2026-10-17 13:14:45, PID 20574, tur ~15 s |
 | 5 | RiskCircuitBreaker.sol + signer.py + test vektörü | bitti | `forge test`: 14/14 geçti; Python↔Solidity digest aynı |
-| 6 | Fuji deploy | yapılacak | Remix ile Akif yapacak; `remix/RiskCircuitBreaker.flat.sol` hazır |
+| 6 | Fuji deploy + chain.py entegrasyonu | bitti | 0xddE4C7…591159; 4 senaryo canlı doğrulandı (2 tx) |
 | 7 | metrics.py + test_metrics.py + scan_demo.py | bitti | `pytest`: 34/34 geçti; demo adayı 6 parite |
 | 8 | agent.py döngüsü | yapılacak | |
 | 9 | signer.py → kontrat uçtan uca | yapılacak | |
@@ -72,12 +72,50 @@ Süreler tek ölçüm (soğuk/sıcak ayrımı yapılmadı).
 - `state` alanının `live` dışındaki olası değerleri DOĞRULANAMADI (TR'de hiç örnek yok).
 - Süreler tek ölçüm; gün içi değişkenlik ölçülmedi.
 
-## Kontrat
-- Ağ: Avalanche Fuji (43113)
-- Adres:
-- Oracle adresi:
-- Snowtrace:
-- Deploy tx:
+## Kontrat (CANLI — Fuji)
+- Ağ: Avalanche Fuji (chainId **43113**)
+- Adres: **0xddE4C78F831f082E8AFDF716266bd1338B591159**
+- Deploy tx: 0x8f757f33eb3e627c3a69d6f4333be0dba200ae8f717e97698f2bc62d8e25bad7
+  (blok 59597359, Remix ile deploy edildi — solc 0.8.35, evm cancun, optimizer 200)
+- Owner: 0xbe965C314D2655360142b05DF34c760e08980F68
+- Oracle: 0x3267103eB5d4F4F6350d0D03327De7637a56d385
+- Trader (demo): 0x5D07498C9Aa3F85c996Dae68e819d8b6AAF8233D (1 AVAX)
+- riskThreshold: 5000 · paused: false · MAX_AGE: 300 · MAX_FUTURE: 60
+  (hepsi zincirden okundu, `chain.py` EXPECTED ile birebir uyuştu)
+- Explorer (tx): `https://explorer-test.avax.network/c-chain/tx/<hash>`
+
+### Fuji'de ölçülen (fuji_smoke.py, 2026-10-17 ~15:0x)
+| # | Senaryo | Sonuç | Gas | Onay |
+|---|---|---|---|---|
+| a | amount 800 / maxSafeSize 1000 | **CONFIRMED**, IntentApproved(amount=800000000) | 60.831 | **1923 ms** |
+| b | aynı imza 2. kez (eth_call) | `AlreadyUsed(digest=0x7459…d690)` | — | — |
+| c | amount 10000 (force_onchain) | **REVERTED_ONCHAIN**, `ExceedsSafeSize(10000000000, 1000000000, 10)` | 150.000 | **1937 ms** |
+| d | timestamp = şimdi−400 (eth_call) | `StaleScore(1792239392, 1792239790)` | — | — |
+
+- tx a: `0x7bef94f297de147acf74dce1139eca659e982e2ae51a51f013b2d89071ba5173`
+- tx c: `0x175eaee2cdce982ad58988c3d73bb08944bf3d62fbcf91dcab1a973b8f4bf0e5`
+- **Cancun yolu Fuji'de ÇALIŞTI** (adım 5'teki varsayım kapandı): tx a onaylandı,
+  yani `MessageHashUtils` + `ECDSA.recover` zincirde yürüdü. OZ 5.6.1 `mcopy`
+  içeren derleme Fuji tarafından kabul edildi.
+- **Canlı digest byte uyumu:** `attestationDigest` (Fuji) ile `signer.py`
+  (Python) aynı girdiler için birebir aynı:
+  `0x745918c2f042764f7867bfdb7eb396090c7fb6c90742ff882ac5ed522102d690`
+  (ZBCN-USDT, buy, risk 3000, maxSafe 1e9, canlı timestamp).
+  Ayrıca `test/vector_fuji.json` (sabit girdiler, canlı adres):
+  `0xadf82b9099ad37b46aff3b88684ac3618721d121e987cf706b0a6d3d23fc261c`
+  — zincirden okunan değerle aynı.
+
+### RPC durumu (ÖLÇÜLDÜ, 2026-10-17 hotspot)
+| Uç nokta | Sonuç |
+|---|---|
+| `api.avax-test.network` (.env'deki FUJI_RPC_URL) | **429 Too Many Requests** — hotspot'ta da açılmadı |
+| `avalanche-fuji-c-chain-rpc.publicnode.com` | **43113, çalışıyor** (tüm tx'ler buradan gitti) |
+| `endpoints.omniatech.io/.../fuji/public` | Cloudflare bloğu |
+| `api.zan.top/.../fuji/public` | 403, "request origin required" |
+| `rpc.ankr.com/avalanche_fuji` | API anahtarı istiyor |
+
+`chain.py` adayları sırayla dener, 429/timeout'ta sonrakine geçer, seçileni
+**maskelenmiş host** olarak loglar (bir RPC URL'i API anahtarı taşıyabilir).
 
 ### Araç zinciri (ÖLÇÜLEN)
 | Bileşen | Sürüm | Not |
@@ -183,10 +221,16 @@ BIGTIME (6.216). Diğer 14'ü 10k'yı da kaldırıyor (RE-USDT 186K'ya kadar).
 ## Açık sorunlar
 - `state` alanının `live` dışındaki değerleri TR'de hiç görülmedi → filtre
   pratikte etkisiz ama korunuyor.
-- **Fuji'nin cancun desteği doğrulanmadı** (OZ 5.6.1 cancun zorunlu kılıyor).
-  Deploy sırasında görülecek; sorun çıkarsa OZ sürümü düşürülür.
-- Deploy henüz yok → kontrat adresi, oracle adresi ve Snowtrace linkleri boş.
-  `signer.py` gerçek imzaları deploy edilen adrese göre üretecek (parametre).
+- **RPC tek bacakta:** sadece publicnode çalışıyor. `.env`'e
+  `FUJI_RPC_URLS=https://avalanche-fuji-c-chain-rpc.publicnode.com` satırı
+  eklenmeli (Akif ekleyecek); şu an komut satırından geçiliyor. Demo günü
+  bu uç nokta da düşerse yeni aday aranması gerekir.
+- Revert eden tx sabit 300.000 gas limitiyle gidiyor ve **150.000 gas**
+  harcanmış görünüyor (yarısı). Sahne için sorun değil, ama "revert ucuz"
+  denemez; neden yarısı olduğu DOĞRULANMADI.
+- `test/vector_fuji.json` canlı adres için üretildi ama imzası **anvil test
+  anahtarıyla** (bilerek: gerçek oracle imzası repoya girmez) → o dosyadaki
+  imza Fuji'de `BadSigner` verir, digest'i ise zincirle birebir aynı.
 
 ## Kapanan sorunlar
 - **Hisse tokenleri (KAPANDI 13:14):** `instCategory=3` filtresi eklendi,

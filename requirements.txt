@@ -10,6 +10,10 @@ eth-account==0.14.0
 eth-utils==6.0.0
 rlp==5.0.0
 
+# Zincir tarafi (chain.py): Fuji RPC + .env okuma
+web3==8.0.0
+python-dotenv==1.2.4
+
 # Testler (test_metrics.py)
 pytest==9.1.1
 

@@ -144,8 +144,8 @@ def sign_attestation(private_key_hex, symbol, side, risk_score,
     }
 
 
-def write_vector(contract_addr=None):
-    """Sabit girdilerle test vektoru uretir ve test/vector.json'a yazar."""
+def write_vector(contract_addr=None, out_path=VECTOR_PATH):
+    """Sabit girdilerle test vektoru uretir ve `out_path`e yazar."""
     contract = contract_addr or create_address(TEST_DEPLOYER, TEST_DEPLOYER_NONCE)
     vec = sign_attestation(
         private_key_hex=ANVIL_TEST_KEY,
@@ -162,11 +162,12 @@ def write_vector(contract_addr=None):
         "(herkesce bilinen TEST anahtari, ozel anahtar bu dosyada YOK). "
         f"Kontrat adresi = CREATE({TEST_DEPLOYER}, nonce {TEST_DEPLOYER_NONCE})."
     )
-    with open(VECTOR_PATH, "w") as f:
+    with open(out_path, "w") as f:
         json.dump(vec, f, indent=2, sort_keys=True)
         f.write("\n")
     print(json.dumps(vec, indent=2, sort_keys=True))
-    print(f"\n-> {VECTOR_PATH}")
+    print(f"\n-> {out_path}")
+    return vec
 
 
 def main():
@@ -176,10 +177,12 @@ def main():
     ap.add_argument("--contract", default=None,
                     help="vektorun uretilecegi kontrat adresi "
                          "(varsayilan: Foundry testinin deploy adresi)")
+    ap.add_argument("--out", default=VECTOR_PATH,
+                    help=f"cikti dosyasi (varsayilan: {VECTOR_PATH})")
     args = ap.parse_args()
 
     if args.vector:
-        write_vector(args.contract)
+        write_vector(args.contract, args.out)
     else:
         ap.print_help()
 
