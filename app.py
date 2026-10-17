@@ -194,14 +194,18 @@ def _card(body, extra=""):
     return f'<div class="arf-card {extra}">{body}</div>'
 
 
-def render_badge(decision):
+def _decision_markup(decision):
     palette = {"ONAY": "#2BB673", "BOL": "#E0A526", "RED": "#E5484D",
                "VERI_YETERSIZ": "#E5484D"}
     label = DECISION_STYLE.get(decision, (None, decision or "—"))[1]
     title, _, detail = label.partition(" — ")
-    st.html(f'<div class="arf-card arf-decision" style="--arf-state:{palette.get(decision, "#8A93A6")}">'
+    return (f'<div class="arf-card arf-decision" style="--arf-state:{palette.get(decision, "#8A93A6")}">'
             f'<div class="arf-decision-name">{_safe(title)}</div>'
             f'<div class="arf-muted">{_safe(detail)}</div></div>')
+
+
+def render_badge(decision):
+    st.html(_decision_markup(decision))
 
 
 # Veri kesintisi sahnesinde bu araclar canli tahtaya DEGIL hafizaya bakiyor;
@@ -311,21 +315,20 @@ def render_middle(out):
     if res is None:
         st.html(_card('<span class="arf-muted">Ölçüm yok.</span>'))
         return
-    render_badge(res["decision"])
     rs, threshold = res["riskScore"], res["riskThreshold"]
     width = max(0, min(100, float(rs) / threshold * 100)) if rs is not None and threshold else 0
     meter = f'<div class="arf-meter"><span style="width:{width:.2f}%"></span></div>'
-    def metric(label, value, unit, tail=""):
+    def metric(label, value, unit, tail="", extra=""):
         missing = " arf-missing" if value in ("—", "veri yok") else ""
         return _card(f'<div class="arf-label">{_safe(label)}</div>'
                      f'<div class="arf-value{missing}">{_safe(value)}</div>'
-                     f'<div class="arf-unit">{_safe(unit)}</div>{tail}')
-    cards = metric("riskScore", _tr(rs), f"/ {_tr(threshold)} eşik", meter)
-    cards += metric("maxSafeSize", _amount(res["maxSafeSize"]), "USDT")
+                     f'<div class="arf-unit">{_safe(unit)}</div>{tail}', extra)
+    cards = metric("Güvenli emir tutarı · maxSafeSize", _amount(res["maxSafeSize"]), "USDT", extra="arf-metric-featured")
+    cards += metric("Risk skoru", _tr(rs), f"/ {_tr(threshold)} eşik", meter)
     cards += metric("İcra maliyeti", _tr(res["slippage_bps_at_size"], 1), f"bps @ {_tr(out['size'])} USDT")
     no_data = res["status"] == "INSUFFICIENT_DATA"
-    cards += metric("Veri yaşı", "veri yok" if no_data else _tr(res["data_age_s"], 2), "" if no_data else "sn")
-    st.html(f'<div class="arf-grid">{cards}</div>')
+    cards += metric("Veri yaşı", "veri yok" if no_data else _tr(res["data_age_s"], 2), "" if no_data else "sn", extra="arf-metric-age")
+    st.html(f'<div class="arf-decision-board">{_decision_markup(res["decision"])}<div class="arf-grid">{cards}</div></div>')
     st.caption(_display_text(f"{res['status']} · hafıza noktası: {_tr(res.get('memory_points'))} · süre: {_tr(out['seconds'], 1)} sn"))
     if res["split_suggestion"]:
         suggestion = res["split_suggestion"]
@@ -453,7 +456,12 @@ def main():
 
     out = st.session_state.get("out")
     if out is None:
-        st.html('<div class="arf-empty"><strong>Emir öncesi icra kontrolü</strong>Yukarıdan bir sahne seçin. Karar izi, ölçümler ve kontrat cevabı burada görünecek.</div>')
+        st.html('<div class="arf-empty"><div><span class="arf-label">Emir öncesi icra kontrolü</span>'
+                '<strong>Emirden önce<br>likiditeyi gör.</strong>'
+                '<p>Bir sahne seçin. Tahtanın taşıyabildiği tutarı, icra maliyetini ve kontratın cevabını birlikte inceleyin.</p></div>'
+                '<ol class="arf-empty-flow"><li><span>01</span>ATK ile canlı tahta</li>'
+                '<li><span>02</span>Deterministik icra ölçümü</li>'
+                '<li><span>03</span>Avalanche üzerinde kontrol</li></ol></div>')
         return
 
     if SCENES[out["scene"]]["feed_down"]:
