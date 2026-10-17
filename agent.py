@@ -24,6 +24,7 @@ import math
 import re
 import statistics
 import time
+from pathlib import Path
 
 import atk_client
 import llm as llm_mod
@@ -129,9 +130,11 @@ TOOLS = [
 class LiveDeps:
     """Gercek veri kaynaklari: ATK CLI, memory.db, Fuji."""
 
-    def __init__(self, db_path=metrics.DB_PATH, pairs_path="pairs.json"):
+    PAIRS_PATH = str(Path(__file__).resolve().parent / "pairs.json")
+
+    def __init__(self, db_path=metrics.DB_PATH, pairs_path=None):
         self.db_path = db_path
-        self.pairs_path = pairs_path
+        self.pairs_path = pairs_path or self.PAIRS_PATH
         self._symbols = None
         self._threshold = None
         self._chain = None  # (w3, url)
@@ -188,8 +191,8 @@ class LiveDeps:
 
     def contract_address(self):
         import chain
-        import os
-        return os.getenv("CONTRACT_ADDRESS") or chain.EXPECTED["contract"]
+        # chain.contract_address(): .env mutlak yoldan yuklenir, bos donmez
+        return chain.contract_address()
 
     def sign(self, symbol, side, risk_score, max_safe_usdt, timestamp):
         import chain

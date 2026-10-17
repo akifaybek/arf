@@ -15,6 +15,7 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -29,8 +30,15 @@ import signer
 
 CHAIN_ID = 43113
 
+# Yollar MUTLAK: Streamlit (ve baska bir dizinden baslatilan her sey)
+# calisma dizinini degistirebilir. Goreli yolda `.env` yuklenmezse
+# CONTRACT_ADDRESS bos kalir ve to_checksum_address("") anlasilmaz bir
+# "Unknown format ''" hatasi verir (app.py sahne 3'te boyle oldu).
+PROJECT_DIR = Path(__file__).resolve().parent
+ENV_PATH = PROJECT_DIR / ".env"
+
 # forge'un derleme ciktisi: Remix'e verilen flat dosya ile AYNI kaynak
-ABI_PATH = "out/RiskCircuitBreaker.sol/RiskCircuitBreaker.json"
+ABI_PATH = PROJECT_DIR / "out" / "RiskCircuitBreaker.sol" / "RiskCircuitBreaker.json"
 
 EXPLORER_TX = "https://explorer-test.avax.network/c-chain/tx/{}"
 
@@ -62,7 +70,20 @@ class ChainError(RuntimeError):
 # =============================================================================
 
 def load_env():
-    load_dotenv()
+    """`.env`'i MUTLAK yoldan yukler (cwd'den bagimsiz, Streamlit dahil)."""
+    load_dotenv(ENV_PATH)
+
+
+def contract_address():
+    """Kontrat adresi: .env > deploy edilen beklenen adres. Asla bos donmez."""
+    load_env()
+    addr = (os.getenv("CONTRACT_ADDRESS") or "").strip() or EXPECTED["contract"]
+    try:
+        return to_checksum_address(addr)
+    except ValueError:
+        raise ChainError(
+            "CONTRACT_ADDRESS gecerli bir adres degil (.env'i kontrol et)"
+        ) from None
 
 
 def mask_rpc(url):
@@ -126,7 +147,7 @@ def connect(verbose=True):
 
 
 def get_contract(w3, address=None):
-    addr = to_checksum_address(address or os.getenv("CONTRACT_ADDRESS", ""))
+    addr = to_checksum_address(address) if address else contract_address()
     return w3.eth.contract(address=addr, abi=load_abi())
 
 
@@ -159,7 +180,7 @@ def sign_attestation_with_oracle(symbol, side, risk_score, max_safe_size_usdt,
     pk = os.getenv("ORACLE_PRIVATE_KEY", "").strip()
     if not pk:
         raise ChainError(".env icinde ORACLE_PRIVATE_KEY yok")
-    addr = to_checksum_address(contract_addr or os.getenv("CONTRACT_ADDRESS", ""))
+    addr = to_checksum_address(contract_addr) if contract_addr else contract_address()
     return signer.sign_attestation(
         private_key_hex=pk,
         symbol=symbol,
@@ -189,7 +210,7 @@ def sign_attestation_with_trader(symbol, side, risk_score, max_safe_size_usdt,
     pk = os.getenv("TRADER_PRIVATE_KEY", "").strip()
     if not pk:
         raise ChainError(".env icinde TRADER_PRIVATE_KEY yok")
-    addr = to_checksum_address(contract_addr or os.getenv("CONTRACT_ADDRESS", ""))
+    addr = to_checksum_address(contract_addr) if contract_addr else contract_address()
     return signer.sign_attestation(
         private_key_hex=pk,
         symbol=symbol,

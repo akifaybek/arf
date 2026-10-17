@@ -47,10 +47,12 @@ GIZLILIK: API anahtarlari .env'den okunur, hicbir yere yazilmaz.
 
 import os
 import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-ENV_PATH = ".env"
+# MUTLAK yol: cwd degisse de (Streamlit) anahtarlar yuklenir
+ENV_PATH = Path(__file__).resolve().parent / ".env"
 
 # --- Gemini model zinciri ---------------------------------------------------
 # Kota MODEL BASINA sayildigi icin bu gercek bir yedek.

@@ -24,11 +24,13 @@ toplanmistir.
 import math
 import sqlite3
 import time
+from pathlib import Path
 from statistics import NormalDist, median
 
 import atk_client
 
-DB_PATH = "memory.db"
+# MUTLAK yol: Streamlit baska bir calisma dizininden baslatilabilir
+DB_PATH = str(Path(__file__).resolve().parent / "memory.db")
 
 # Veri bu yastan eskiyse imza uretilmez (CLAUDE.md madde 5)
 MAX_DATA_AGE_S = 120

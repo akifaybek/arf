@@ -1,6 +1,6 @@
 # STATUS — Arf
 
-Son güncelleme: 2026-10-17 16:55 — Claude (demo.py 3 sahne + fail-closed zincirde doğrulandı)
+Son güncelleme: 2026-10-17 17:15 — Claude (Streamlit tarayıcı hataları: .env/ABI yolları mutlak)
 
 ## Adımlar
 | # | Adım | Durum | Not |
@@ -227,7 +227,34 @@ sahne 1 `SIMULATED_OK` (3,0 sn), sahne 2 `SIMULATED_REVERT`
 `ExceedsSafeSize(…, suggestedParts=2)` (3,3 sn), sahne 3 `SIMULATED_REVERT`
 `BadSigner(recovered=0x5d07…233d)` (0,6 sn).
 
-### HATA ve DÜZELTME: `simulate_only` tx gönderiyordu (1 istenmeyen tx)
+### HATA ve DÜZELTME 2: göreli yollar → Sahne 3 çöküyordu (tarayıcıda)
+Tarayıcıda Sahne 3 "Kontrat cevabı" kutusunda
+`ValueError: Unknown format '', attempted to normalize to '0x'` çıkıyordu;
+BadSigner hiç görünmüyordu (terminalde `demo.py 3` çalışıyordu).
+- **Kök neden:** yollar göreliydi. `chain.load_env()` `load_dotenv()`'i
+  argümansız çağırıyordu — dotenv o zaman çağrı yığınına bakarak `.env` arar;
+  Streamlit scripti `exec` ile koşturduğu için bu arayış boş dönebiliyor.
+  `.env` yüklenmeyince `CONTRACT_ADDRESS` boş kalıyor ve
+  `to_checksum_address("")` tam o hatayı veriyor. Aynı sınıftan ikinci kusur:
+  `ABI_PATH` göreliydi (başka bir dizinden koşunca `FileNotFoundError`).
+- **Düzeltme:** `chain.ENV_PATH`, `chain.ABI_PATH`, `llm.ENV_PATH`,
+  `metrics.DB_PATH`, `LiveDeps.PAIRS_PATH` **mutlak** (`Path(__file__)`
+  tabanlı); `chain.load_env()` mutlak yolu açıkça veriyor; yeni
+  `chain.contract_address()` `.env` → beklenen adres sırasıyla çalışıp
+  **asla boş dönmüyor**, geçersiz değerde anlaşılır `ChainError` veriyor;
+  `app.py` import anında `chain.load_env()` çağırıyor.
+- **Doğrulama (gerçek sürece yakın):** `cwd=/tmp` + ilgili env değişkenleri
+  silinmiş halde `app.run_scene(3, …)` → import sonrası `.env` yüklendi,
+  karar `VERI_YETERSIZ`, imza YOK, kontrat cevabı
+  `BadSigner(recovered=0x5d07…233d)`, `sent=False`, hata yok.
+- Ek: Sahne 3'te `scan_market`/`compute_metric` satırlarına karar izinde
+  **"hafıza (canlı tahta YOK)"** etiketi eklendi (gösterim; karar mantığı
+  değişmedi). UI metinleri Türkçe karakterlere çevrildi, "veri yaşı" değeri
+  kısaltıldı ("veri yok"), tıklanan sahnenin butonu vurgulanıyor.
+- Regresyon: `test_app_safety.py` **13 test** (yol mutlaklığı, env yüklenmesi,
+  `contract_address()` boş dönmemesi, geçersiz adreste açık hata).
+
+### HATA ve DÜZELTME 1: `simulate_only` tx gönderiyordu (1 istenmeyen tx)
 `chain.simulate_only`, adına rağmen yalnızca **revert durumunda** gönderimi
 atlıyordu; eth_call **geçerse** `execute_intent` tx'i gönderiyordu. app.py
 sahne 1'in ilk headless denemesinde bu yüzden **istenmeyen bir gerçek tx**

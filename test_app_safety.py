@@ -150,3 +150,52 @@ def test_onchain_proofs_are_real_hashes():
     # eth_call ile dogrulanan kontroller hash'siz listelenir (uydurma yok)
     names = [n for n, _ in app.SIMULATED_ONLY]
     assert "AlreadyUsed" in names and "StaleScore" in names
+
+
+# =============================================================================
+# Yol/env saglamligi (Streamlit baska bir calisma dizininden baslatilabilir)
+# =============================================================================
+
+def test_all_data_paths_are_absolute():
+    """Goreli yol, Streamlit'te `.env`/ABI yuklenmemesine ve
+    `to_checksum_address('')` -> "Unknown format ''" hatasina yol aciyordu."""
+    import os
+    import agent as agent_mod
+    import llm
+    import metrics
+    for name, path in [("chain.ENV_PATH", chain.ENV_PATH),
+                       ("chain.ABI_PATH", chain.ABI_PATH),
+                       ("llm.ENV_PATH", llm.ENV_PATH),
+                       ("metrics.DB_PATH", metrics.DB_PATH),
+                       ("LiveDeps.PAIRS_PATH", agent_mod.LiveDeps.PAIRS_PATH)]:
+        assert os.path.isabs(str(path)), f"{name} mutlak degil: {path}"
+
+
+def test_app_loads_env_at_import():
+    """app.py import edilince .env yuklenmis olmali (cwd ne olursa olsun)."""
+    import os
+    assert os.getenv("CONTRACT_ADDRESS"), "app import'u .env'i yuklemedi"
+
+
+def test_contract_address_never_returns_empty(monkeypatch):
+    monkeypatch.setenv("CONTRACT_ADDRESS", "")
+    assert chain.contract_address() == chain.EXPECTED["contract"]
+
+    monkeypatch.delenv("CONTRACT_ADDRESS", raising=False)
+    # .env'den yeniden yuklenir ya da beklenen adrese duser; bos olamaz
+    addr = chain.contract_address()
+    assert addr.startswith("0x") and len(addr) == 42
+
+
+def test_contract_address_gives_clear_error_on_garbage(monkeypatch):
+    monkeypatch.setenv("CONTRACT_ADDRESS", "bu-bir-adres-degil")
+    with pytest.raises(chain.ChainError) as exc:
+        chain.contract_address()
+    assert "CONTRACT_ADDRESS" in str(exc.value)
+
+
+def test_feed_down_scene_labels_memory_tools():
+    """Sahne 3'te hafizadan okuyan araclar etiketlenebilir olmali."""
+    assert app.SCENES[3]["feed_down"] is True
+    assert "scan_market" in app.MEMORY_TOOLS
+    assert "compute_metric" in app.MEMORY_TOOLS
