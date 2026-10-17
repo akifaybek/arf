@@ -530,3 +530,100 @@ def test_anthropic_marks_failed_tool_results_as_error():
              "response": {"ok": False, "error": "tahta yok"}}]
     out = llm_mod.AnthropicProvider._to_messages(None, msgs)
     assert out[0]["content"][0]["is_error"] is True
+
+
+# =============================================================================
+# Fail-closed: veri kesintisi simulasyonu (ARF_FEED_DOWN=1)
+# =============================================================================
+
+class FeedDownDeps(FakeDeps):
+    """Tahta ve mumlari GERCEK atk_client'tan ister.
+
+    ARF_FEED_DOWN=1 iken atk_client CLI'yi hic cagirmaz, ok=False doner;
+    boylece env -> atk_client -> metrics -> agent zinciri butunuyle test edilir
+    (ag yok, subprocess yok).
+    """
+
+    def orderbook(self, symbol):
+        import atk_client
+        return atk_client.get_orderbook(symbol)
+
+    def candles(self, symbol, n):
+        import atk_client
+        return atk_client.get_candles(symbol, n)
+
+
+def test_atk_client_returns_not_ok_when_feed_down(monkeypatch):
+    import atk_client
+    monkeypatch.setenv(atk_client.FEED_DOWN_ENV, "1")
+    assert atk_client.feed_down() is True
+    for res in (atk_client.get_orderbook(SYMBOL),
+                atk_client.get_ticker(SYMBOL),
+                atk_client.get_candles(SYMBOL, 10),
+                atk_client.get_tickers_spot(),
+                atk_client.get_instruments_spot()):
+        assert res["ok"] is False
+        assert res["data"] is None
+        assert "SIMULASYON" in res["error"]
+        assert res["fetched_at"] > 0      # yas hesabi yine calisiyor
+
+
+def test_feed_down_off_by_default(monkeypatch):
+    import atk_client
+    monkeypatch.delenv(atk_client.FEED_DOWN_ENV, raising=False)
+    assert atk_client.feed_down() is False
+
+
+def test_agent_fails_closed_when_feed_down(monkeypatch):
+    """Veri kesilince: VERI_YETERSIZ, imza YOK, riskScore/maxSafeSize None."""
+    import atk_client
+    monkeypatch.setenv(atk_client.FEED_DOWN_ENV, "1")
+    deps = FeedDownDeps()
+    res = agent.run_check(SYMBOL, "buy", 1000.0, deps=deps, use_llm=False)
+
+    assert res["status"] == "INSUFFICIENT_DATA"
+    assert res["decision"] == "VERI_YETERSIZ"
+    assert res["signed_attestation"] is None
+    assert res["riskScore"] is None and res["maxSafeSize"] is None
+    assert deps.sign_calls == 0
+    assert "SIMULASYON" in str(res["trace"])
+
+
+def test_agent_fails_closed_even_if_llm_says_onay(monkeypatch):
+    """LLM 'ONAY' dese bile veri yoksa imza uretilmez (LLM gevsek kalir)."""
+    import atk_client
+    monkeypatch.setenv(atk_client.FEED_DOWN_ENV, "1")
+    deps = FeedDownDeps()
+    provider = FakeProvider([metric_call(1000.0), final_step("ONAY")])
+    res = agent.run_check(SYMBOL, "buy", 1000.0, provider=provider, deps=deps)
+
+    assert res["llm_suggestion"] == "ONAY"
+    assert res["decision"] == "VERI_YETERSIZ"
+    assert res["signed_attestation"] is None
+    assert deps.sign_calls == 0
+
+
+def test_sign_score_tool_refuses_when_feed_down(monkeypatch):
+    import atk_client
+    monkeypatch.setenv(atk_client.FEED_DOWN_ENV, "1")
+    deps = FeedDownDeps()
+    session = agent.AgentSession(SYMBOL, "buy", 1000.0, deps=deps)
+    session.call_tool("compute_metric", {"symbol": SYMBOL, "side": "buy",
+                                         "size_usdt": 1000.0})
+    out = session.call_tool("sign_score", {})
+    assert out["ok"] is False
+    assert "INSUFFICIENT_DATA" in out["error"]
+    assert deps.sign_calls == 0
+
+
+def test_recovery_after_feed_comes_back(monkeypatch):
+    """Besleme donunce ayni oturum yeniden karar verebiliyor (kalici kilit yok)."""
+    import atk_client
+    monkeypatch.setenv(atk_client.FEED_DOWN_ENV, "1")
+    down = agent.run_check(SYMBOL, "buy", 100.0, deps=FeedDownDeps(), use_llm=False)
+    assert down["decision"] == "VERI_YETERSIZ"
+
+    monkeypatch.delenv(atk_client.FEED_DOWN_ENV, raising=False)
+    up = agent.run_check(SYMBOL, "buy", 100.0, deps=FakeDeps(), use_llm=False)
+    assert up["decision"] == "ONAY"
+    assert up["signed_attestation"] is not None

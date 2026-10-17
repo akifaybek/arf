@@ -1,6 +1,6 @@
 # STATUS — Arf
 
-Son güncelleme: 2026-10-17 15:55 — Claude (agent.py + llm.py: LLM planlayıcı canlı)
+Son güncelleme: 2026-10-17 16:55 — Claude (demo.py 3 sahne + fail-closed zincirde doğrulandı)
 
 ## Adımlar
 | # | Adım | Durum | Not |
@@ -15,8 +15,8 @@ Son güncelleme: 2026-10-17 15:55 — Claude (agent.py + llm.py: LLM planlayıc�
 | 7 | metrics.py + test_metrics.py + scan_demo.py | bitti | `pytest`: 34/34 geçti; demo adayı 6 parite |
 | 8 | agent.py + llm.py döngüsü | bitti | LLM planlayıcı canlı; 25 agent testi; 2 gerçek tx |
 | 9 | signer.py → kontrat uçtan uca | bitti | agent → imza → Fuji: ONAY ve BOL sahneleri zincirde |
-| 10 | Trader niyeti + revert sahnesi | yapılacak | |
-| 11 | Fail-closed sahnesi | yapılacak | |
+| 10 | Trader niyeti + revert sahnesi | bitti | `demo.py 2`: ExceedsSafeSize ön izleme + zincirde doğrulandı |
+| 11 | Fail-closed sahnesi | bitti | `demo.py 3`: ARF_FEED_DOWN → imza yok; BadSigner zincirde doğrulandı |
 | 12 | (ops.) mcp_server.py | yapılacak | |
 | 13 | Streamlit app.py | yapılacak | |
 | 14 | README + yedek video + prova | yapılacak | |
@@ -207,6 +207,39 @@ BIGTIME (6.216). Diğer 14'ü 10k'yı da kaldırıyor (RE-USDT 186K'ya kadar).
   CLAUDE.md'de kayma/derinlik/anomali/spread olarak sayılmış).
 - `scan_demo.py` aday sıralaması: önce `riskScore ≤ 5000`, sonra 1k/10k
   sınırlarına en büyük pay.
+
+## Demo sahneleri (adım 6a — demo.py)
+
+Tek komut: `python demo.py {1|2|3}` · bayraklar: `--send` (gerçek tx),
+`--no-llm` (deterministik plan), `--symbol/--size/--big`.
+Varsayılan davranış: **zincire hiçbir şey yazılmaz**, revert sebepleri
+`eth_call` ile gösterilir. Çıktı düz ANSI renkli (rich kurulu değil,
+yeni bağımlılık eklenmedi).
+
+| Sahne | Ne gösteriyor | Karar | Zincir cevabı | Süre |
+|---|---|---|---|---|
+| 1 | 1.000 USDT güvenli tutarın içinde | **ONAY** | imza üretildi (tx opsiyonel) | 11,7 sn |
+| 2 | 10.000 USDT güvenli tutarı aşıyor | **BOL** (2 parça) | `ExceedsSafeSize(10000000000, 5380718742, 2)` | 9,9 sn |
+| 3 | Veri kesintisi + yetkisiz imza | **VERI_YETERSIZ** | `BadSigner(recovered=0x5d07…233d)` | 3,5 sn |
+
+### Fail-closed, ZİNCİRDE DOĞRULANDI (2026-10-17 ~16:50)
+- Sahne 3 tek gerçek tx: **`0x0b05e13fa25cb379d62f715820266a32db08250b40b19e2474940b5311ede98e`**
+  → **REVERTED_ONCHAIN**, `BadSigner(recovered=0x5d07498c9aa3f85c996dae68e819d8b6aaf8233d)`,
+  gas 150.000, onay **2294 ms**.
+  https://explorer-test.avax.network/c-chain/tx/0x0b05e13fa25cb379d62f715820266a32db08250b40b19e2474940b5311ede98e
+- Zincir: `ARF_FEED_DOWN=1` → ATK CLI hiç çağrılmıyor → `metrics` →
+  `INSUFFICIENT_DATA` → agent `VERI_YETERSIZ`, **imza YOK** → imza alamayan
+  trader uydurma skoru (riskScore 0, maxSafeSize 1M USDT) **kendi anahtarıyla**
+  imzalayıp gönderiyor → kontrat `BadSigner` ile reddediyor.
+- `chain.sign_attestation_with_trader` **yalnızca bu sahne için** var ve
+  "SIMULASYON" olarak işaretli; ürün akışında böyle bir yol yok.
+
+### Veri kesintisi simülasyonu (ARF_FEED_DOWN)
+`atk_client.run_okx` env değişkenini görürse CLI'yi hiç çalıştırmadan
+`{"ok": False, "error": "feed_down (SIMULASYON)"}` döner. **6 ağsız pytest**
+bunu kanıtlıyor: tüm ATK uçları ok=False; agent VERI_YETERSIZ + imza None;
+LLM "ONAY" dese bile imza yok; `sign_score` aracı reddediyor; besleme
+dönünce aynı oturum yeniden ONAY verebiliyor (kalıcı kilit yok).
 
 ## Agent + LLM (adım 8 — agent.py, llm.py)
 

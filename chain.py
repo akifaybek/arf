@@ -176,6 +176,32 @@ def trader_account():
     return _account("TRADER_PRIVATE_KEY")
 
 
+def sign_attestation_with_trader(symbol, side, risk_score, max_safe_size_usdt,
+                                 timestamp, contract_addr=None):
+    """SIMULASYON: trader kendi anahtariyla kendi skorunu imzalar.
+
+    Gercek urun akisinda BOYLE BIR YOL YOK; bu yalnizca fail-closed sahnesi
+    icin var: veri kesilince imza alamayan trader, uydurma bir skoru kendi
+    imzalayip zincire gonderirse kontrat `BadSigner` ile reddeder.
+    Anahtar bu fonksiyonun icinden cikmaz.
+    """
+    load_env()
+    pk = os.getenv("TRADER_PRIVATE_KEY", "").strip()
+    if not pk:
+        raise ChainError(".env icinde TRADER_PRIVATE_KEY yok")
+    addr = to_checksum_address(contract_addr or os.getenv("CONTRACT_ADDRESS", ""))
+    return signer.sign_attestation(
+        private_key_hex=pk,
+        symbol=symbol,
+        side=side,
+        risk_score=risk_score,
+        max_safe_size_usdt=max_safe_size_usdt,
+        timestamp=timestamp,
+        chain_id=CHAIN_ID,
+        contract_addr=addr,
+    )
+
+
 # =============================================================================
 # Durum okuma
 # =============================================================================

@@ -17,6 +17,18 @@ import time
 ORDERBOOK_MAX_SZ = 400  # --sz 401 ve ustu: "Parameter sz error" (Code 51000)
 CLI_TIMEOUT_S = 10
 
+# Fail-closed sahnesi icin veri kesintisi SIMULASYONU.
+# ARF_FEED_DOWN=1 ise hicbir CLI cagrisi yapilmaz, her istek ok=False doner.
+# Boylece "veri kesilirse ne olur" sorusu gercek kod yolunda gosterilir:
+# metrics -> INSUFFICIENT_DATA, agent -> VERI_YETERSIZ, imza YOK.
+FEED_DOWN_ENV = "ARF_FEED_DOWN"
+FEED_DOWN_ERROR = "feed_down (SIMULASYON)"
+
+
+def feed_down():
+    """Veri kesintisi simulasyonu acik mi (ARF_FEED_DOWN=1)."""
+    return os.environ.get(FEED_DOWN_ENV, "").strip() in ("1", "true", "TRUE", "yes")
+
 
 def run_okx(args):
     """`okx <args...> --json` calistirir. ASLA exception firlatmaz.
@@ -28,6 +40,9 @@ def run_okx(args):
     env["OKX_SITE"] = "tr"
 
     started = time.time()
+    if feed_down():
+        # SIMULASYON: CLI hic cagrilmaz, besleme kopmus gibi davranilir
+        return _result(False, None, FEED_DOWN_ERROR, started)
     try:
         proc = subprocess.run(
             cmd, env=env, capture_output=True, text=True, timeout=CLI_TIMEOUT_S
