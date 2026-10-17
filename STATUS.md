@@ -1,6 +1,6 @@
 # STATUS — Arf
 
-Son güncelleme: 2026-10-17 13:40 — Claude (kontrat + signer + 14 forge testi)
+Son güncelleme: 2026-10-17 14:55 — Claude (metrics.py + 34 pytest + demo taraması)
 
 ## Adımlar
 | # | Adım | Durum | Not |
@@ -12,7 +12,7 @@ Son güncelleme: 2026-10-17 13:40 — Claude (kontrat + signer + 14 forge testi)
 | 4 | logger.py arka planda | bitti | başlangıç: 2026-10-17 13:14:45, PID 20574, tur ~15 s |
 | 5 | RiskCircuitBreaker.sol + signer.py + test vektörü | bitti | `forge test`: 14/14 geçti; Python↔Solidity digest aynı |
 | 6 | Fuji deploy | yapılacak | Remix ile Akif yapacak; `remix/RiskCircuitBreaker.flat.sol` hazır |
-| 7 | metrics.py | yapılacak | |
+| 7 | metrics.py + test_metrics.py + scan_demo.py | bitti | `pytest`: 34/34 geçti; demo adayı 6 parite |
 | 8 | agent.py döngüsü | yapılacak | |
 | 9 | signer.py → kontrat uçtan uca | yapılacak | |
 | 10 | Trader niyeti + revert sahnesi | yapılacak | |
@@ -125,6 +125,50 @@ maxSafeSize 1000 USDT = 1e9 birim, timestamp 1760000000, chainId 43113).
 `test_RevertNoSafeSize`, `test_RevertBadSide`, `test_PauseBlocks`,
 `test_SetOracleOnlyOwner`, `test_SetOracleRotates` (eski oracle imzası
 artık `BadSigner`), `test_SetRiskThresholdOnlyOwner`.
+
+## Metrikler (adım 7 — metrics.py)
+
+### ÖLÇÜLEN
+- `pytest -v`: **34 test, 34 geçti** (`test_metrics.py`). Ağ yok, ATK çağrısı
+  yok, `memory.db`'ye dokunulmaz — hafıza ve tahta her testte enjekte edilir.
+- **Bonferroni eşiği hesaplandı (sabit yazılmadı):**
+  `bonferroni_threshold(alpha=0.05, m=20)` = **3.023341**
+  (`NormalDist().inv_cdf(1 - 0.05/40)`; düzeltmesiz m=1 için 1.959964).
+- **İç tutarlılık (canlı tahtada, iki yönde):** `max_safe_size` dönen tutarda
+  `walk_book` kaymayı **tam 100.000 bps** ölçüyor — ZBCN/BIGTIME/SOPH,
+  buy ve sell. Seviye içi miktar kapalı formle çözülüyor (interpolasyon değil).
+- Sentetik tahtada elle doğrulanabilir cevap: ask 100/101/102 ×1, bid 99/98/97
+  ×1, mid 99.5 → `max_safe_size(buy, %1)` = **199.0 USDT** (hedef fiyat
+  100.495; 101 seviyesinden alınan miktar 99/101 baz).
+
+### Demo taraması (scan_demo.py, alış tarafı, 2026-10-17 ~14:50)
+20 paritenin 6'sı demo koşulunu sağlıyor (1.000 ≤ maxSafeSize < 10.000 USDT):
+NES (7.120), ZBCN (3.588), OFC (6.739), VELODROME (8.586), SOPH (1.158),
+BIGTIME (6.216). Diğer 14'ü 10k'yı da kaldırıyor (RE-USDT 186K'ya kadar).
+- Seçilen 2 aday: **ZBCN-USDT** (maxSafe 3.588, risk 2684, parça@10k=3,
+  sınırlara pay 2.79x) ve **BIGTIME-USDT** (maxSafe 6.216, risk 323,
+  parça@10k=2, pay 1.61x).
+- Tahta dakikalar içinde oynuyor: aynı pariteler birkaç dakika sonra
+  ZBCN 3.394 / BIGTIME 6.467 ölçüldü. Demo anında yeniden taranmalı.
+- Hiçbir paritede `maxSafeSize` ALT SINIR değil (tahta %1 kaymaya ulaşmadan
+  bitmiyor) → `book_truncated` ile birlikte bu durum demo sırasında da
+  izlenecek.
+
+### VARSAYIMLAR (ölçülmüş değil, tasarım tercihi; hepsi tek yerde)
+- `RISK_WEIGHTS` (toplam 1.0): kayma 0.35, derinlik düşüşü 0.20, anomali z
+  0.15, spread 0.15, dolmama 0.15.
+- `RISK_SCALES` (bileşeni 1.0 yapan "tavan" değerler): kayma 200 bps,
+  derinlik yarıya inmesi (0.50), spread 100 bps.
+- `LIMITED_MEMORY_PENALTY = 1000` (0–10000 skalasında): hafıza 30 noktadan
+  azsa z bileşenleri hesaplanmaz, skora muhafazakâr sabit eklenir.
+- `MIN_MEMORY_POINTS = 30`, `MEMORY_LOOKBACK = 120` örnek (~2 saat).
+- `DEFAULT_MAX_SLIP_BPS = 100` (%1) — CLAUDE.md madde 4'ten.
+- Kayma MID'e göre ölçülür, **yarım spread dahil** (agent bunu "piyasa
+  emriyle anında al/sat maliyeti" olarak okur).
+- `volume_quality` raporlanır ama risk skoruna **girmez** (skor bileşenleri
+  CLAUDE.md'de kayma/derinlik/anomali/spread olarak sayılmış).
+- `scan_demo.py` aday sıralaması: önce `riskScore ≤ 5000`, sonra 1k/10k
+  sınırlarına en büyük pay.
 
 ## Logger
 - Komut: `nohup caffeinate -i .venv/bin/python logger.py > logger.log 2>&1 &`
