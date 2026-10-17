@@ -1,223 +1,248 @@
-"""Arf sunumunu üretir. Yalnızca bu klasöre yazar; proje modülü yüklemez.
+"""Arf sunumu. Yalnızca presentation/ içine yazar; proje modüllerini yüklemez.
 
-Kullanım: python presentation/build_deck.py
-Bağımlılık: python-pptx (proje requirements.txt dosyasından bağımsız).
+python presentation/build_deck.py  (python-pptx gerekir)
 """
 from pathlib import Path
+import ast
 import json
+import re
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.oxml.xmlchemy import OxmlElement
 
 ROOT = Path(__file__).resolve().parent
-BG = "101923"
-FG = "F4F7FA"
-MUTED = "B6C4D1"
-CYAN = "62E4CD"
-AMBER = "FFC56D"
-RED = "FF8E88"
-PANEL = "1C2B39"
-FONT = "Arial"
-CONTRACT = "0xddE4C78F831f082E8AFDF716266bd1338B591159"
+BG, PANEL, PAPER = "071F23", "0C2B30", "E8EBDF"
+FG, SAGE, MUTED = "EEF1E8", "B5D0BD", "ADC0BA"
+INK, PAPER_MUTED, RULE = "16312E", "4D655D", "35524F"
+GREEN, AMBER, RED = "2BB673", "B17C17", "BF4746"
+SANS, SERIF, MONO = "Arial", "Georgia", "Courier New"
 GITHUB = "https://github.com/akifaybek/arf"
-TX_BAD = "0x0b05e13fa25cb379d62f715820266a32db08250b40b19e2474940b5311ede98e"
+DEMO = "https://arf-icra-demo.copperspoon2.chatgpt.site"
+CONTRACT = "0xddE4C78F831f082E8AFDF716266bd1338B591159"
+EXPLORER = "https://explorer-test.avax.network/c-chain/tx/"
+# Sabit kanıt listesini AST ile okur; app.py import edilmez, ortam dosyası açılmaz.
+source = ast.parse((ROOT.parent / "app.py").read_text())
+proofs = next(ast.literal_eval(n.value) for n in source.body if isinstance(n, ast.Assign)
+              and any(isinstance(t, ast.Name) and t.id == "ONCHAIN_PROOFS" for t in n.targets))
 prs = Presentation()
-prs.slide_width = Inches(13.333333)
-prs.slide_height = Inches(7.5)
+prs.slide_width, prs.slide_height = Inches(13.333333), Inches(7.5)
+prs.core_properties.title = "Arf — İşlem öncesi icra ve likidite kalkanı"
+prs.core_properties.subject = "OKX Agent Trade Kit × Avalanche Fuji"
+prs.core_properties.author = "Arf"
+records = []
 
 
-def rect(s, x, y, w, h, color=PANEL):
-    sh = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
-    sh.fill.solid()
-    sh.fill.fore_color.rgb = RGBColor.from_string(color)
-    sh.line.fill.background()
-    return sh
+def block(s, x, y, w, h, color):
+    obj = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+    obj.fill.solid()
+    obj.fill.fore_color.rgb = RGBColor.from_string(color)
+    obj.line.fill.background()
+    return obj
 
 
-def text(s, x, y, w, h, value, size=24, color=FG, bold=False, align=PP_ALIGN.LEFT, link=None):
-    sh = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
-    tf = sh.text_frame
-    tf.clear()
-    tf.word_wrap = True
-    tf.margin_left = tf.margin_right = Inches(0)
-    tf.margin_top = tf.margin_bottom = Inches(0.03)
-    for i, line in enumerate(value.split("\n")):
-        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+def line(s, x1, y1, x2, y2, color=RULE, width=1, arrow=False):
+    obj = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
+    obj.line.color.rgb = RGBColor.from_string(color)
+    obj.line.width = Pt(width)
+    if arrow:
+        end = OxmlElement("a:tailEnd")
+        end.set("type", "triangle")
+        obj.line._get_or_add_ln().append(end)
+    return obj
+
+
+def text(s, x, y, w, h, value, size=24, color=None, font=SANS, bold=False,
+         align=PP_ALIGN.LEFT, link=None):
+    obj = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    frame = obj.text_frame
+    frame.clear()
+    frame.word_wrap = True
+    frame.margin_left = frame.margin_right = 0
+    frame.margin_top = frame.margin_bottom = Inches(.02)
+    for i, part in enumerate(value.split("\n")):
+        p = frame.paragraphs[0] if i == 0 else frame.add_paragraph()
         p.alignment = align
-        p.space_after = Pt(8)
-        r = p.add_run()
-        r.text = line
-        r.font.name = FONT
-        r.font.size = Pt(size)
-        r.font.bold = bold
-        r.font.color.rgb = RGBColor.from_string(color)
+        p.space_after = Pt(4)
+        p.line_spacing = 1.05
+        run = p.add_run()
+        run.text = part
+        run.font.name = font
+        run.font.size = Pt(size)
+        run.font.bold = bold
+        run.font.color.rgb = RGBColor.from_string(color or FG)
         if link:
-            r.hyperlink.address = link
-    return sh
+            run.hyperlink.address = link
+    return obj
 
 
-def slide(title, notes, seconds):
+def slide(title, note, seconds, light=False, heading=True):
     s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg, fg, muted = (PAPER, INK, PAPER_MUTED) if light else (BG, FG, MUTED)
     s.background.fill.solid()
-    s.background.fill.fore_color.rgb = RGBColor.from_string(BG)
-    rect(s, .6, .52, .65, .06, CYAN)
-    text(s, .65, .83, 12, .82, title, 38, bold=True)
-    text(s, .65, 7.05, 11.6, .27, "Arf  /  OKX Agent Trade Kit × Avalanche  /  17 Ekim 2026", 12, MUTED)
-    text(s, 12.15, 7.02, .5, .3, f"{len(prs.slides):02}", 13, MUTED)
-    s.notes_slide.notes_text_frame.text = notes
-    records.append({"slide": len(prs.slides), "title": title, "target_seconds": seconds,
-                    "note_characters": len(notes), "note_words": len(notes.split()), "notes": notes})
+    s.background.fill.fore_color.rgb = RGBColor.from_string(bg)
+    if heading:
+        text(s, .78, .67, 11.8, 1.12, title, 40, fg, SERIF)
+    line(s, .78, 6.94, 12.55, 6.94, PAPER_MUTED if light else RULE, .7)
+    text(s, .8, 7.08, 10.9, .25, "Arf   /   OKX Agent Trade Kit × Avalanche   /   17 Ekim 2026", 11, muted)
+    text(s, 12.04, 7.05, .48, .3, f"{len(prs.slides):02}", 12, muted, MONO, align=PP_ALIGN.RIGHT)
+    s.notes_slide.notes_text_frame.text = note
+    records.append({"slide":len(prs.slides),"title":title,"target_seconds":seconds,
+                    "notes":note,"note_characters":len(note),"note_words":len(note.split())})
     return s
 
 
-def rows(s, items, y=2.0, step=1.02, size=27):
-    for i, item in enumerate(items):
-        text(s, .75, y + step*i, .35, .45, "•", size, CYAN)
-        text(s, 1.18, y + step*i, 11.25, .85, item, size)
+# 1 / Kimlik
+s = slide("Arf", "Arf, AI trading agent'lar için işlem öncesi icra ve likidite kalkanı; ATK verisini Avalanche üzerindeki bir devre kesiciye bağlıyorum. Adı Cahit Arf ve Arf değişmezine gönderme yapıyor, çünkü sistem tek bir değişmezi koruyor: emir tutarı imzalı güvenli tutarı aşamaz. Bu sunumda problemi, kurduğum akışı ve kötü senaryoda ne olduğunu göstereceğim; canlı uygulama yerelde, internetteki paylaşılabilir sürüm ise açıkça etiketlenmiş kayıtlı bir simülasyon.", 30, heading=False)
+block(s, 9.15, 0, 4.183333, 6.93, PAPER)
+text(s, .75, 1.05, 7.8, 1.65, "Arf", 112, FG, SERIF)
+text(s, .83, 3.06, 7.65, 1.63, "İşlem öncesi icra\nve likidite kalkanı", 36, FG)
+text(s, .85, 5.36, 7.4, .7, "AI trading agent’lar için", 23, MUTED)
+text(s, 9.53, 1.8, 3.4, .7, "emir tutarı", 25, INK, MONO, align=PP_ALIGN.CENTER)
+text(s, 9.53, 2.66, 3.4, 1.5, "≤", 100, INK, SERIF, align=PP_ALIGN.CENTER)
+text(s, 9.43, 4.37, 3.6, .7, "maxSafeSize", 25, INK, MONO, align=PP_ALIGN.CENTER)
+text(s, .85, 6.3, 7.3, .32, "Cahit Arf’a ve değişmez fikrine gönderme.", 16, MUTED)
 
+# 2 / Problem
+s = slide("Aynı tahta. Çok farklı icra maliyeti.", "ATK ile binlerce trading agent yazılacak; tahtanın emri kaldırıp kaldıramayacağını bilmeyen agent kendini batırır. Hackathon ölçüm notundaki BIGTIME örneğinde bin USDT için kayma on virgül sekiz baz puanken on bin USDT için bin iki yüz seksen dört baz puan; tutar on kat, kayma oranı yüz kattan fazla büyüyor. Bunlar 17 Ekim tarihli tek bir tahta örneği, canlı fiyat veya genel performans garantisi değil; bu nedenle kontrolün her emirden önce tekrarlanması gerekiyor.", 35, light=True)
+text(s, .85, 2.08, 5.45, .55, "BIGTIME-USDT", 22, PAPER_MUTED)
+line(s, 6.55, 2.17, 6.55, 5.38, "B7C5BA")
+text(s, .85, 2.88, 5.1, .55, "1.000 USDT", 24, INK)
+text(s, .8, 3.55, 5.5, 1.15, "10,8", 76, INK, MONO)
+text(s, .88, 4.92, 5.1, .5, "bps kayma", 23, PAPER_MUTED)
+text(s, 7.15, 2.88, 5.1, .55, "10.000 USDT", 24, INK)
+text(s, 7.1, 3.55, 5.2, 1.15, "1284", 76, INK, MONO)
+text(s, 7.18, 4.92, 5.1, .5, "bps kayma", 23, PAPER_MUTED)
+text(s, .85, 5.9, 11.5, .57, "10× tutar, 100× üzerinde kayma oranı", 28, INK)
+text(s, .86, 6.57, 11.5, .24, "ÖLÇÜLEN: hackathon ölçüm notu. Canlı tahta değişir.", 14, PAPER_MUTED)
 
-records = []
-s = slide("Arf", "Arf, AI trading agent'lar için işlem öncesi icra ve likidite kalkanı; tek kişilik takım olarak OKX Agent Trade Kit ile topladığım piyasa verisini Avalanche üzerindeki devre kesiciye bağlıyorum. Cahit Arf ve Arf değişmezine gönderme yapan adı, sistemin koruduğu tek koşulu hatırlatıyor: hiçbir emir tahtanın taşıyabileceğinden büyük olamaz. Bugün önce icra maliyetinin tutarla nasıl değiştiğini, ardından çalışan karar akışını ve en önemlisi veri bozulduğunda ne olduğunu göstereceğim; iddialarımda geçmiş gerçek zincir işlemlerini, canlı ölçümü ve simülasyonu ayrı tutacağım.", 35)
-text(s, .75, 2.0, 11.8, 1.5, "AI trading agent'lar için\nişlem öncesi icra ve likidite kalkanı", 36, bold=True)
-text(s, .77, 4.05, 11.8, .6, "OKX Agent Trade Kit × Avalanche", 28, CYAN)
-text(s, .77, 5.0, 11.8, .8, "Cahit Arf'a gönderme: tek bir değişmezi korumak.", 23, MUTED)
+# 3 / Çözüm
+s = slide("Bir emir için tek değişmez.", "Arf’ın sorduğu soru basit: bu emir bu tahtada kaça patlar ve en fazla ne kadarlık emir güvenli? check_execution sembolü, yönü ve tutarı alır; deterministik risk skorunu, güvenli tutarı ve gerekiyorsa bölme önerisini üretir, taze sonuç oracle tarafından imzalanır ve kontrat bu sınırı uygular. Buradaki güvenli tutar anlık tahta ölçümüdür, gelecekteki dolum garantisi değildir ve kontrat OKX üzerinde kendisi emir yürütmez.", 30)
+text(s, .85, 2.0, 11.5, .55, "Her emirden önce: ölçüm, imza ve zincir kontrolü.", 27, MUTED)
+block(s, .8, 3.05, 11.75, 1.68, PAPER)
+text(s, 1.08, 3.48, 11.15, .85, "emir tutarı ≤ maxSafeSize", 44, INK, MONO, align=PP_ALIGN.CENTER)
+text(s, .86, 5.45, 11.55, .7, "Tahtanın taşıyamadığı emir, sınırda durur.", 30, FG, SERIF)
+text(s, .87, 6.31, 11.5, .35, "check_execution(symbol, side, size)", 20, SAGE, MONO)
 
-s = slide("Tahta emri kaldırabilecek mi?", "ATK ile binlerce trading agent yazılacak; tahtanın emri kaldırıp kaldıramayacağını bilmeyen agent kendini batırır, çünkü aynı paritede tutar büyüdükçe icra maliyeti doğrusal artmaz. Hackathon ölçüm notundaki BIGTIME örneğinde bin USDT için kayma on virgül sekiz baz puanken on bin USDT için bin iki yüz seksen dört baz puan; tutar on kat, kayma oranı yüz kattan fazla büyüyor. Bunlar geçmiş bir tahta anının ölçümleri, canlı fiyat veya garanti değil; agent'ın her emir öncesinde güncel likiditeyi sorgulaması tam bu yüzden gerekli.", 45)
-text(s, .75, 1.95, 11.8, .65, "Tahtayı bilmeyen agent kendini batırır.", 28)
-text(s, .8, 3.0, 5.6, .5, "BIGTIME-USDT  /  1.000 USDT", 23, MUTED)
-text(s, .8, 3.65, 5.6, 1.0, "10,8 bps", 54, CYAN, True)
-text(s, 7.0, 3.0, 5.5, .5, "BIGTIME-USDT  /  10.000 USDT", 23, MUTED)
-text(s, 7.0, 3.65, 5.5, 1.0, "1284 bps", 54, AMBER, True)
-text(s, .8, 5.35, 11.8, .7, "10× tutar, 100×+ kayma oranı", 32, bold=True)
-text(s, .8, 6.25, 11.8, .4, "ÖLÇÜLEN: hackathon notu, 17 Ekim 2026; canlı tahta değişir.", 16, MUTED)
+# 4 / Mimari
+s = slide("ATK verisinden Fuji kontrolüne.", "Piyasa verisi ATK CLI’dan TR sitesi ve JSON çıktısıyla geliyor; logger yirmi paritenin epizodik hafızasını altmış saniye aralıkla tutuyor. Deterministik metrikler kaymayı ve derinliği hesaplıyor, geçmiş medyanla piyasa rejimini karşılaştırıyor, LLM de bu araçların kullanımını planlıyor. Sonuç EIP-191 ile imzalanıp Fuji’de denetleniyor; piyasa verisi için yüz yirmi saniyelik eşik ve kontrattaki üç yüz saniyelik imza penceresi ayrı kontroller.", 40, light=True)
+labels = [("ATK", "Canlı tahta"), ("Metrikler", "İcra maliyeti"), ("Planlayıcı", "LLM araç seçimi"), ("İmza + Fuji", "Devre kesici")]
+for i, (head, body) in enumerate(labels):
+    x = .85 + 3.05*i
+    line(s, x, 2.52, x+2.5, 2.52, PAPER_MUTED, 1)
+    text(s, x, 2.84, 2.56, .7, head, 27, INK, SERIF)
+    text(s, x, 3.76, 2.55, .85, body, 22, PAPER_MUTED)
+    if i<3:
+        line(s, x+2.55, 3.24, x+2.91, 3.24, PAPER_MUTED, 1.5, True)
+text(s, .85, 5.18, 5.3, .75, "20 parite", 36, INK, MONO)
+text(s, .88, 6.03, 5.3, .5, "epizodik hafıza", 22, PAPER_MUTED)
+text(s, 7.06, 5.18, 5.3, .75, "60 sn", 36, INK, MONO)
+text(s, 7.09, 6.03, 5.3, .5, "kayıt aralığı", 22, PAPER_MUTED)
 
-s = slide("Her emirden önce icra karnesi", "Agent check_execution çağrısına sembolü, alış veya satış yönünü ve USDT tutarını verir; Arf deterministik risk skorunu, güvenli tutarı ve gerekiyorsa bölme önerisini üretir. Veri taze ve yeterliyse oracle bu sayıları imzalar, Avalanche kontratı da imzalı sınırı aşan niyeti reddeder; bölme hesabı hem agent'ta hem kontratta tutarın güvenli tutara bölümünün yukarı yuvarlanmasıdır. Buradaki değişmez imzalı güvenli tutarla sınırlıdır, gelecekteki tahta dolumunu garanti etmez ve prototip kontrat OKX'te emir yürütmez; güvenli tutar sıfırsa bölme önerisi de yoktur.", 40)
-text(s, .8, 2.0, 11.8, .65, "check_execution(symbol, side, size)", 30, CYAN, True)
-rows(s, ["riskScore + maxSafeSize + bölme önerisi", "EIP-191 imza, Avalanche'ta devre kesici"], y=3.05, step=.9)
-rect(s, .75, 5.12, 11.85, 1.2)
-text(s, 1.0, 5.35, 11.35, .7, "Değişmez: emir tutarı ≤ maxSafeSize", 32, CYAN, True)
+# 5 / Agentic yaklaşım
+s = slide("LLM planlar. Sayılar deterministik.", "Agentic taraf, hangi kanıta hangi araçla bakılacağını seçen LLM planlayıcı; scan_market, get_candles, get_orderbook, compute_metric ve argümansız sign_score araçlarını kullanıyor. Sayılar deterministik hesaplanıyor, karar birleştirmede yalnızca daha muhafazakâr öneri kazanıyor ve sağlayıcılar çalışmazsa deterministik yedek plan devreye giriyor. Dürüst sınır şu: kontrat LLM karar etiketini değil imzalı sayıları denetler, dolayısıyla entegratör uygulama kararını da uygulamalı; serbest kullanıcı metni LLM’e gönderilmez.", 40)
+for x, head, detail in [( .86,"LLM", "Aracı seçer.\nKanıtı yorumlar."), (5.05,"Metrikler", "Skoru hesaplar.\nGüvenli tutarı bulur."), (9.12,"Kontrat", "İmzayı doğrular.\nSınırı uygular.")]:
+    line(s, x, 2.3, min(x+3.3,12.45), 2.3, RULE)
+    text(s, x, 2.72, 3.35, .75, head, 36, SAGE, SERIF)
+    text(s, x, 3.7, 3.3, 1.3, detail, 25, FG)
+text(s, .9, 5.62, 11.7, .5, "Anthropic   /   Gemini   /   deterministik yedek", 23, SAGE)
+text(s, .9, 6.37, 11.5, .35, "Sınır: LLM karar etiketi zincirde imzalanmıyor.", 17, MUTED)
 
-s = slide("Veriden zincire", "Mimari ATK CLI ile başlıyor; tüm piyasa verisi TR sitesi ve JSON çıktısı üzerinden gelirken logger yirmi paritenin epizodik hafızasını altmış saniye aralıkla tutuyor. Metrikler anlık tahtayı geçmiş medyan derinlikle karşılaştırıyor, piyasa rejimi için robust z hesaplıyor ve kayma sınırından güvenli tutarı çıkarıyor; LLM bu araçları çağırıyor ama sayısal sonucu yeniden yazamıyor. İmza yalnızca yeterli ve taze veriyle üretiliyor, kontrat ise imza ve tutar sınırını denetliyor; yüz yirmi saniyelik piyasa veri eşiği ile kontratın üç yüz saniyelik imza geçerlilik penceresi ayrı kontroller.", 45)
-boxes = [(0.75, 2.2, 3.25, 1.1, "OKX ATK CLI\nTR / JSON"),
-         (5.05, 2.2, 3.25, 1.1, "Epizodik hafıza\n+ metrikler"),
-         (9.35, 2.2, 3.25, 1.1, "LLM planlayıcı\n12 araç bütçesi"),
-         (9.35, 4.7, 3.25, 1.1, "EIP-191\nimza"),
-         (4.55, 4.7, 3.85, 1.1, "RiskCircuitBreaker\nAvalanche Fuji")]
-for x, y, w, h, label in boxes:
-    rect(s, x, y, w, h)
-    text(s, x+.13, y+.12, w-.26, h-.18, label, 23, align=PP_ALIGN.CENTER)
-for x1, y1, x2, y2 in [(4.05, 2.75, 4.9, 2.75), (8.35, 2.75, 9.2, 2.75), (10.97, 3.4, 10.97, 4.55), (9.2, 5.25, 8.55, 5.25)]:
-    c = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
-    c.line.color.rgb = RGBColor.from_string(CYAN)
-    c.line.width = Pt(3)
-    from pptx.oxml.xmlchemy import OxmlElement
-    end = OxmlElement("a:tailEnd")
-    end.set("type", "triangle")
-    c.line._get_or_add_ln().append(end)
-text(s, .8, 4.65, 3.3, 1.0, "Veri yok / >120 sn:\nimza yok", 25, RED, True)
-text(s, .8, 6.25, 11.8, .4, "Ölçüm ve araç sonuçları karar izinde görünür.", 20, MUTED)
+# 6 / Demo
+s = slide("Üç sahnede çalışan sistem.", "Şimdi yerel uygulamada önce bin USDT niyetini açıp karar izini, güvenli tutarı ve imzayı gösteriyorum; tahta uygunsa sonuç onay, canlı veri değiştiğinde sonuç da değişebilir. Sonra on bin USDT niyetinde güvenli tutar aşılırsa ExceedsSafeSize ve N parçaya bölme önerisini karşılaştırıyorum; N’yi önceden sabitlemiyorum, agent ve kontrat aynı yukarı yuvarlama hesabını kullanıyor. Üçüncü sahne açıkça veri kesintisi simülasyonu: oracle imza üretmiyor ve trader’ın kendi imzası BadSigner alıyor; varsayılan yerel kontrat cevabı eth_call ön izlemesi, gerçek işlem kanıtları ayrı ve internet sürümü yalnızca kayıtlı örnekleri gösteriyor.", 85, light=True)
+for x, num, amount, decision, color, detail in [
+    (.87,"01","1.000 USDT","ONAY",GREEN,"Tahta uygunsa\nimzalı kontrol"),
+    (5.06,"02","10.000 USDT","BÖL",AMBER,"ExceedsSafeSize\nN parçaya böl"),
+    (9.07,"03","Veri yok","İMZA YOK",RED,"SİMÜLASYON\nBadSigner")]:
+    text(s, x, 2.05, 3.3, .4, num, 18, PAPER_MUTED, MONO)
+    line(s, x, 2.64, min(x+3.25,12.42), 2.64, "B7C5BA")
+    text(s, x, 2.95, 3.4, .75, amount, 29, INK)
+    text(s, x, 4.02, 3.4, .66, decision, 27, color, bold=True)
+    text(s, x, 4.98, 3.4, 1.05, detail, 22, INK)
+text(s, .9, 6.43, 11.6, .38, "Yerelde canlı demo. İnternette kayıtlı simülasyon.", 20, PAPER_MUTED, link=DEMO)
 
-s = slide("LLM planlar, metrikler hesaplar", "Planlayıcının scan_market, get_candles, get_orderbook, compute_metric ve sign_score araçları var; hangi kanıta bakacağını seçmesi agentic tarafı oluşturuyor, karar izinden de bu seçimi gösterebiliyorum. Sayılar deterministik, sign_score argümansız ve karar birleştirme sırası veri yetersiz, red, böl, onay şeklinde; LLM uygulama kararını yalnızca daha muhafazakâr yapabilir. Ana sağlayıcı Anthropic, ardından Gemini ve deterministik plan geliyor; dürüst sınır şu ki kontrat LLM etiketini değil imzalı sayıları denetler, dolayısıyla entegratör uygulama kararını da uygulamalı ve her LLM sıkılaştırmasının zincirde zorlandığını iddia etmiyorum.", 45)
-rows(s, ["LLM araç sırasını seçer; sayılar deterministik.", "sign_score argümansız; sayılar değiştirilemez.", "Karar birleştirme yalnızca daha muhafazakâr olabilir.", "Anthropic → Gemini → deterministik yedek."], y=1.95, step=.95, size=26)
-text(s, .85, 6.1, 11.7, .65, "Sınır: uygulama karar etiketi imzada yok; kontrat sayıları denetler.", 20, AMBER)
+# 7 / Kötü senaryo
+s = slide("Veri bozulursa imza yok.", "Kötü senaryoda önce veri kesintisini gösteriyorum: imza yok, yetkisiz imza BadSigner alıyor; replay’de ise kontrat önce tazeliğe baktığı için eski kullanılmış onay StaleScore, geçerlilik penceresindeki kullanılmış onay AlreadyUsed alıyor ve iki yol da gerçek tx ile kaydedildi. Oracle anahtarı çalınırsa owner pause ve setOracle ile müdahale edebiliyor, ama tek oracle güveni devam ediyor. LLM için yapısal veri ve deterministik sayılar, yanlış alarm için parametrik eşik ve nominal Bonferroni düzeltmesi var; gerçek yanlış alarm oranını ölçtüğümü söylemiyorum ve acil çıkış yolu yalnızca kavram.", 45)
+entries = [
+    ("Veri kesintisi", "İmza üretilmez"),
+    ("Yetkisiz imza", "BadSigner"),
+    ("Eski onay / tekrar", "StaleScore / AlreadyUsed"),
+    ("Oracle anahtarı", "pause + setOracle"),
+    ("LLM / yanlış alarm", "Deterministik skor + parametrik eşik")]
+for i,(a,b) in enumerate(entries):
+    y=2.02+i*.79
+    line(s,.87,y+.61,12.43,y+.61,RULE,.7)
+    text(s,.9,y,4.4,.53,a,24,MUTED)
+    text(s,5.42,y,7.0,.56,b,23,FG,MONO if i in (1,2,3) else SANS)
+text(s,.9,6.43,11.6,.35,"Tazelik kontrolü replay kontrolünden önce gelir.",19,SAGE)
 
-s = slide("Canlı demo: üç sahne", "Şimdi aynı ZBCN-USDT tahtasında önce bin USDT niyetini açıyorum, karar izini ve imzalı güvenli tutarı gösteriyorum; tahta uygunsa sonuç onay, ama tutar ve sonuç canlı veriyle değişebilir. İkinci sahnede on bin USDT güvenli tutarı aştığında ExceedsSafeSize cevabını gösterip agent'ın önerdiği parça sayısıyla kontratın hesabını karşılaştırıyorum; parça sayısını önceden sabitlemiyorum. Üçüncü sahne açıkça veri kesintisi simülasyonu: oracle imza üretmiyor, trader'ın kendi imzası BadSigner alıyor; ekrandaki ön izleme eth_call, alttaki explorer bağlantısı ise geçmiş gerçek işlemin kanıtı, ağ sorunu olursa deterministik yedeğe veya videoya geçiyorum.", 90)
-rows(s, ["1.000 USDT: tahta uygunsa ONAY", "10.000 USDT: ExceedsSafeSize, N parçaya böl", "Veri kesintisi SİMÜLASYONU: imza yok, BadSigner"], y=2.0, step=1.08, size=27)
-text(s, .85, 5.5, 11.6, .9, "Parça sayısı canlıdır. Agent ile kontratın hesabı birebir aynı.", 25, CYAN)
-text(s, .85, 6.45, 11.6, .35, "Varsayılan: eth_call ön izlemesi. Geçmiş gerçek tx kanıtları README'de.", 16, MUTED)
+# 8 / Kanıt
+s = slide("Zincirde doğrulandı.", "Ana kanıt listesinde yedi gerçek işlem var: IntentApproved kayıtları ve demo kapsamındaki ExceedsSafeSize, BadSigner, AlreadyUsed ve StaleScore kontrolleri; taze replay için bir USDT hazırlık işlemi ayrıca kullanıldı. Tablodaki işlem kimlikleri tıklanabilir, Python testlerinin güncel sayısı seksen yedi ve Solidity için on dört test kaydı var; burada Python koşuları ortam dosyası okunmadan, açık kontrat adresiyle doğrulandı, Solidity sayısı STATUS kaydından geliyor. Yaklaşık iki saniye zincir onayı ve koşu başına yaklaşık 0,001 USD LLM maliyeti proje kayıtlarına dayanıyor, bütün uygulamanın iki saniyede tamamlandığı anlamına gelmiyor; tek oracle ve testnet sınırları devam ediyor, risk ağırlıkları tasarım tercihi.", 45, light=True)
+text(s,.86,1.86,7.7,.55,"7 gerçek tx / ana kanıt listesi",23,PAPER_MUTED)
+for i,(label,tx) in enumerate(proofs):
+    y=2.58+i*.48
+    title=label.split(" (",1)[0]
+    if i in (0,1):title += " / ilk" if i==0 else " / agent"
+    if i in (2,3):title += " / ilk" if i==2 else " / agent"
+    text(s,.88,y,4.13,.39,title,20,INK)
+    text(s,5.08,y,3.18,.39,tx[:10]+"…"+tx[-6:],20,PAPER_MUTED,MONO,link=EXPLORER+tx)
+    line(s,.88,y+.43,8.2,y+.43,"B7C5BA",.5)
+line(s,8.68,2.0,8.68,6.3,"B7C5BA")
+text(s,9.2,2.15,3.05,.85,"87/87",43,INK,MONO)
+text(s,9.25,3.1,3.03,.45,"Python testi",22,PAPER_MUTED)
+text(s,9.2,4.05,3.0,.85,"~2 sn",43,INK,MONO)
+text(s,9.25,5.0,3.02,.65,"zincir onayı",22,PAPER_MUTED)
+text(s,9.25,6.05,3.0,.4,"LLM ~0,001 USD/koşu",20,PAPER_MUTED)
+text(s,.9,6.21,7.6,.36,"14/14 Solidity testi (STATUS kaydı)",18,PAPER_MUTED)
+text(s,.9,6.64,11.6,.23,"Fuji kontratı: "+CONTRACT,13,PAPER_MUTED,MONO,link="https://explorer-test.avax.network/c-chain/address/"+CONTRACT)
 
-s = slide("Kötü senaryoda ne oluyor?", "Organizatörün sorusunu doğrudan cevaplayayım: veri bozulunca imza yok, yetkisiz imza BadSigner alıyor ve replay için önce tazelik kontrol ediliyor: eski onay StaleScore, üç yüz saniyelik pencere içindeki tüketilmiş onay AlreadyUsed ile reddediliyor; her iki katman da gerçek tx ile ölçüldü. Oracle anahtarı çalınırsa owner pause ve setOracle ile müdahale ediyor; yanlış alarm için zincirde parametrik eşik ve nominal Bonferroni düzeltmesi var, ancak gerçek yanlış alarm oranını ölçtüğümü söylemiyorum. LLM'e sadece yapısal veri gidiyor ve sayılar deterministik kalıyor; tek oracle güveni sürüyor, önceden verilmiş imzalar geçerlilik penceresinde kullanılabilir ve acil çıkış yolu yalnızca kavram, bu yüzden çoklu oracle ile eşik imza sonraki adım.", 50)
-table = s.shapes.add_table(6, 2, Inches(.8), Inches(1.9), Inches(11.8), Inches(4.4)).table
-table.columns[0].width = Inches(4.0)
-table.columns[1].width = Inches(7.8)
-data = [("Kötü senaryo", "Mevcut karşılık"), ("Oracle anahtarı çalınır", "pause + setOracle"), ("LLM yanlış yorumlar", "Yapısal veri + deterministik sayılar"), ("Yanlış alarm", "Parametrik eşik + Bonferroni"), ("Piyasa verisi kesilir", "İmza yok; yetkisiz imza BadSigner"), ("Taze tekrar / eski onay", "AlreadyUsed / StaleScore: gerçek tx")]
-for ri, pair in enumerate(data):
-    for ci, val in enumerate(pair):
-        cell = table.cell(ri, ci)
-        cell.fill.solid()
-        cell.fill.fore_color.rgb = RGBColor.from_string(PANEL if ri else "25483F")
-        cell.margin_left = Inches(.18)
-        cell.margin_right = Inches(.12)
-        cell.margin_top = Inches(.12)
-        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-        cell.text = val
-        for p in cell.text_frame.paragraphs:
-            for r in p.runs:
-                r.font.name = FONT
-                r.font.size = Pt(22)
-                r.font.bold = ri == 0
-                r.font.color.rgb = RGBColor.from_string(FG)
-text(s, .85, 6.4, 11.6, .55, "Tazelik önce: eski onay StaleScore, taze tekrar AlreadyUsed.", 20, CYAN)
+# 9 / Ürün ve gelecek
+s = slide("Bugün çalışan. Sonra geliştirilecek.", "Bugün yerelde çalışan canlı ATK ve imzalı skor akışı, Fuji kontratı ve paylaşılabilir bir internet simülasyonu var; internet sürümü kayıtlı örnekler kullanıyor, yeni veri veya imza üretmiyor. Hedef müşteri ATK ile agent geliştiren ekipler ve bireyler, tasarlanan iş modeli temel kontrolü ücretsiz tutup gerçek zamanlı API erişimini ücretlendirmek ama fiyat ve ödeme isteği henüz doğrulanmadı. Çoklu oracle, eşik imza, EIP-712, Almgren–Chriss icra planı, OKX.ai listeleme ve çağrı başına ödeme sonraki adımlar; bunları bugün kodlanmış özellik gibi sunmuyorum.",45)
+text(s,.87,2.0,5.5,.55,"Bugün",30,SAGE,SERIF)
+text(s,.87,2.98,5.55,1.8,"Yerelde canlı demo\nFuji’de devre kesici\nİnternette simülasyon",26,FG)
+line(s,6.55,2.05,6.55,5.0,RULE)
+text(s,7.12,2.0,5.3,.55,"Sonraki adım",30,SAGE,SERIF)
+text(s,7.12,2.98,5.3,1.8,"Çoklu oracle + EIP-712\nİcra planı\nOKX.ai servis yayını",26,FG)
+text(s,7.14,5.05,5.2,.35,"Henüz kodlanmadı.",18,MUTED)
+line(s,.87,5.75,12.43,5.75,RULE)
+text(s,.9,6.03,11.6,.6,"İş modeli tasarımı: temel ücretsiz, gerçek zamanlı API ücretli.",22,MUTED)
 
-s = slide("Ölçülen kanıt, açık sınırlar", "Ana kanıt listesinde yedi gerçek tx var; IntentApproved ile demo kapsamındaki ExceedsSafeSize, BadSigner, AlreadyUsed ve StaleScore zincirde kaydedildi, taze replay kanıtı için bir USDT hazırlık işlemi ayrıca kullanıldı. Kontrat tazeliği replay kontrolünden önce denetlediği için eski kullanılmış onay StaleScore, geçerlilik penceresindeki kullanılmış onay AlreadyUsed alıyor; tablodaki bağlantılar bu gerçek işlemlere gidiyor. Güncel toplam seksen yedi Python testi burada ortam dosyası yüklemesi kapalı ve açık kontrat adresiyle geçti, on dört Solidity testi STATUS kaydı; yaklaşık iki saniye zincir onayı ve binde bir dolar LLM maliyeti örnek ölçümler, tek oracle ve testnet sınırları sürüyor.", 40)
-proofs = [
-    ("IntentApproved / ilk kontrol", "0x7bef94f297de147acf74dce1139eca659e982e2ae51a51f013b2d89071ba5173"),
-    ("IntentApproved / agent", "0xa5798d597f00a46e36c93a48f4423d46a18faf082d2006562140e4bd5eaacbbe"),
-    ("ExceedsSafeSize / ilk kontrol", "0x175eaee2cdce982ad58988c3d73bb08944bf3d62fbcf91dcab1a973b8f4bf0e5"),
-    ("ExceedsSafeSize / agent", "0x80aeb84999c64df29bec84dccedd6addb3b1c22adac4e69abd74fc29eb2667a6"),
-    ("BadSigner", TX_BAD),
-    ("AlreadyUsed", "0xa1ad95144f813310c2b6c96457b35be32f71c3290f53d632f2b46baffbf99a80"),
-    ("StaleScore", "0x0b29025776a1f03d8304fd01144ebe88741fe1d760ec405e5b8ebac9b91233a3"),
-]
-proof_table = s.shapes.add_table(8, 2, Inches(.8), Inches(1.85), Inches(11.8), Inches(3.8)).table
-proof_table.columns[0].width = Inches(6.5)
-proof_table.columns[1].width = Inches(5.3)
-for ri, pair in enumerate([("7 gerçek tx / ana kanıt listesi", "Fuji işlem bağlantısı"), *proofs]):
-    for ci, value in enumerate(pair):
-        cell = proof_table.cell(ri, ci)
-        cell.fill.solid()
-        cell.fill.fore_color.rgb = RGBColor.from_string(PANEL if ri else "25483F")
-        cell.margin_left = Inches(.16)
-        cell.margin_top = cell.margin_bottom = Inches(.03)
-        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-        cell.text = value if ri == 0 or ci == 0 else value[:14] + "…" + value[-8:]
-        for para in cell.text_frame.paragraphs:
-            for run in para.runs:
-                run.font.name = FONT
-                run.font.size = Pt(20)
-                run.font.bold = ri == 0
-                run.font.color.rgb = RGBColor.from_string(CYAN if ri and ci else FG)
-                if ri and ci:
-                    run.hyperlink.address = "https://explorer-test.avax.network/c-chain/tx/" + value
-text(s, .85, 5.84, 11.6, .45, "Yaklaşık 2 sn zincir onayı; yaklaşık $0,001 / LLM koşusu", 22)
-text(s, .85, 6.32, 11.6, .45, "Python 87/87; Solidity 14/14 (STATUS); 20 parite epizodik hafıza", 20)
-text(s, .85, 6.78, 11.6, .25, "Sınır: tek oracle, testnet; ağırlıklar varsayım. 1 USDT hazırlık tx'i ayrıca README'de.", 14, MUTED)
+# 10 / Kapanış
+s = slide("Teşekkürler.", "Teşekkür ederim, Arf’ın amacı her emirden önce tahtanın taşıyabileceği tutarı görünür ve doğrulanabilir kılmak. GitHub bağlantısında kaynak kod ve gerçek işlem kanıtları, internet bağlantısında ise kayıtlı verilerle çalışan etkileşimli simülasyon var. Canlı sistemi yerelde göstermeye ve sorularınızı cevaplamaya hazırım.",25,light=True,heading=False)
+text(s,.8,1.15,11.6,1.35,"Teşekkürler.",74,INK,SERIF)
+text(s,.89,2.93,11.5,.85,"Arf",40,INK,SERIF)
+text(s,.9,3.8,11.4,.67,"İşlem öncesi icra ve likidite kalkanı.",28,PAPER_MUTED)
+line(s,.9,4.85,12.4,4.85,"B7C5BA")
+text(s,.92,5.23,10.8,.6,"github.com/akifaybek/arf",29,INK,link=GITHUB)
+text(s,.94,6.07,11.0,.48,"Web demosu: kayıtlı verilerle etkileşimli simülasyon",21,PAPER_MUTED,link=DEMO)
 
-s = slide("Agent'lar için icra kontrolü servisi", "İlk müşteri ATK ile agent geliştiren ekipler ve bireysel kullanıcılar; önerilen model temel kontrolü ücretsiz tutup gerçek zamanlı API erişimini ücretlendirmek, ama ücret ödeme isteği ve gelir henüz doğrulanmadı. Sonraki adım çoklu oracle ve eşik imza, EIP-712 ile daha okunur imzalama, Almgren–Chriss icra planı, ardından OKX.ai listeleme ve çağrı başına ödeme; bunlar bugün kodlanmış özellikler değil, mainnet veya Avalanche L1 geçişi de bu aşamaların sonrasında değerlendirilecek. Bugün gösterebildiğim değer, güncel ATK tahtasından çıkan sayısal sınırın Fuji üzerinde onay veya redde dönüşmesi; repo ve kontrat açık, her emirden önce aynı soruyu soruyoruz: bu tahta bu emri kaldırır mı?​", 30)
-rows(s, ["Müşteri: ATK agent geliştiricileri ve bireyler", "Model: temel ücretsiz, gerçek zamanlı/API ücretli", "Kodlanmadı: çoklu oracle, EIP-712, icra planı", "Kodlanmadı: OKX.ai, HTTP 402, mainnet / L1"], y=1.85, step=.82, size=25)
-text(s, .85, 5.42, 11.65, .5, GITHUB, 25, CYAN, link=GITHUB)
-text(s, .85, 6.04, 11.65, .65, "Fuji kontratı\n" + CONTRACT, 20, MUTED,
-     link="https://explorer-test.avax.network/c-chain/address/" + CONTRACT)
-
-# Konuşma uzunluğuna göre prova payı; sahne 6 canlı tıklama/bekleme içerir.
-for record, seconds in zip(records, [35, 40, 40, 40, 40, 90, 45, 40, 50]):
-    record["target_seconds"] = seconds
-
-out = ROOT / "Arf.pptx"
+out=ROOT/'Arf.pptx'
 prs.save(out)
-(ROOT / "speaker_notes.md").write_text(
-    "# Arf konuşmacı notları\n\nHedef toplam: 420 saniye (7 dakika), canlı demo dahil. Gerçek süre prova ile doğrulanacak.\n\n" +
-    "\n\n".join(f"## {r['slide']}. {r['title']} — {r['target_seconds']} sn\n\n{r['notes']}" for r in records) + "\n",
-    encoding="utf-8")
-
-# Dosyayı tekrar açarak başlık ve notları doğrula.
-check = Presentation(out)
-assert len(check.slides) == 9
-assert abs(check.slide_width / check.slide_height - 16 / 9) < .001
-for i, (s, expected) in enumerate(zip(check.slides, records), 1):
-    titles = [sh.text for sh in s.shapes if sh.has_text_frame]
-    assert expected["title"] in titles
-    notes = s.notes_slide.notes_text_frame.text
-    assert notes == expected["notes"]
-    print(f"{i}. {expected['title']} | not: {len(notes)} karakter, {len(notes.split())} kelime")
-    for sh in s.shapes:
-        assert sh.left >= 0 and sh.top >= 0
-        assert sh.left + sh.width <= check.slide_width + 100
-        assert sh.top + sh.height <= check.slide_height + 100
-summary = {"slides": len(check.slides), "aspect": "16:9", "notes_words": sum(r["note_words"] for r in records),
-           "target_seconds_including_demo": sum(r["target_seconds"] for r in records), "slides_detail": records, "onchain_proofs": [{"event": event, "tx": tx} for event, tx in proofs],
-           "preparation_tx": "0x0b4cfc04d3c91d5fe0fe09667d66eb07ef1bc630c8cec6b13ab47fe07ad23530"}
-(ROOT / "validation.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-print(f"Üretildi: {out}; toplam {summary['notes_words']} not kelimesi, hedef {summary['target_seconds_including_demo']} sn")
+check=Presentation(out)
+assert len(check.slides)==10
+assert abs(check.slide_width/check.slide_height-16/9)<.001
+all_text=[]
+for s,record in zip(check.slides,records):
+    visible=[]
+    for shape in s.shapes:
+        assert shape.left>=0 and shape.top>=0
+        assert shape.left+shape.width<=check.slide_width+100
+        assert shape.top+shape.height<=check.slide_height+100
+        if shape.has_text_frame:visible.append(shape.text)
+    assert check.slides[record['slide']-1].notes_slide.notes_text_frame.text==record['notes']
+    record['visible_words']=len(' '.join(visible).split())
+    all_text.extend(visible)
+    print(f"{record['slide']:02} {record['title']} | {record['visible_words']} görünür kelime | not: {record['note_characters']} karakter")
+joined=' '.join(all_text+[r['notes'] for r in records])
+assert not re.search(r'sk-ant|AIza|PRIVATE_KEY|manipülasyon|wash trading|öğrenme',joined,re.I)
+assert sum(r['target_seconds'] for r in records)==420
+summary={'slides':10,'aspect':'16:9','palette':{'petrol':BG,'sage':SAGE,'paper':PAPER},
+         'target_seconds_including_demo':420,'notes_words':sum(r['note_words'] for r in records),
+         'slides_detail':records,'onchain_proofs':[{'event':a,'tx':b} for a,b in proofs],
+         'preparation_tx':'0x0b4cfc04d3c91d5fe0fe09667d66eb07ef1bc630c8cec6b13ab47fe07ad23530',
+         'github':GITHUB,'web_demo':DEMO}
+(ROOT/'validation.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2)+'\n')
+(ROOT/'speaker_notes.md').write_text('# Arf konuşmacı notları\n\n10 slayt. Hedef 7 dakika, canlı demo dahil. Süre prova ile doğrulanacak.\n\n'+'\n\n'.join(f"## {r['slide']}. {r['title']} — {r['target_seconds']} sn\n\n{r['notes']}" for r in records)+'\n')
+print(f'Üretildi: {out}; notlar {summary["notes_words"]} kelime, prova hedefi 420 sn.')

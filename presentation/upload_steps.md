@@ -7,7 +7,7 @@
 3. Dosya seçicide **Cmd+Shift+G** tuşlarına bas. `/Applications/arf/presentation` yazıp Enter'a bas.
 4. **Arf.pptx** dosyasını seç ve **Aç** düğmesine bas. Yüklemenin bitmesini bekle.
 5. Drive'daki dosyaya sağ tıkla → **Birlikte aç** → **Google Slaytlar**.
-6. Sunumu açtıktan sonra 9 slaytı sırayla kontrol et. Okların yönüne, Türkçe karakterlere ve son slayttaki kontrat adresine bak. Konuşmacı notları alt panelde görünmüyorsa **Görünüm → Konuşmacı notlarını göster** seçeneğini aç; gerekirse `speaker_notes.md` dosyasından kopyala.
+6. Sunumu açtıktan sonra 10 slaytı sırayla kontrol et. Okların yönüne, Türkçe karakterlere ve 8. slayttaki işlem bağlantılarına bak. Son slaytta teşekkür, GitHub ve web simülasyonu bağlantıları var. Konuşmacı notları alt panelde görünmüyorsa **Görünüm → Konuşmacı notlarını göster** seçeneğini aç; gerekirse `speaker_notes.md` dosyasından kopyala.
 7. Sağ üstte **Paylaş** düğmesine bas.
 8. **Genel erişim** altında **Kısıtlı** menüsünü aç → **Bağlantıya sahip olan herkes** seç.
 9. Yetkiyi **Görüntüleyen** bırak. **Bağlantıyı kopyala**, ardından **Bitti** düğmesine bas.
