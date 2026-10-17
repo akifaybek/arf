@@ -1,4 +1,13 @@
-# Arf bagimliliklari
+# Arf bagimliliklari (Python 3.14.0, .venv)
 # Veri katmani (atk_client, pick_pairs, logger) sadece standart kutuphane
 # kullanir: subprocess, json, sqlite3, statistics, time.
+
+# Imzalayici (signer.py): abi.encode byte uyumu + EIP-191 imza
+eth-abi==6.0.0
+eth-account==0.14.0
+# dogrudan import edildikleri icin ayrica sabitlendi (eth-account bunlari
+# zaten getiriyor): keccak/checksum ve CREATE adresi hesabi
+eth-utils==6.0.0
+rlp==5.0.0
+
 # Sonraki adimlarda eklenecek: web3, streamlit, LLM istemcisi.

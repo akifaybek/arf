@@ -1,6 +1,6 @@
 # STATUS — Arf
 
-Son güncelleme: 2026-10-17 13:15 — Claude (hisse tokeni filtresi + book_truncated)
+Son güncelleme: 2026-10-17 13:40 — Claude (kontrat + signer + 14 forge testi)
 
 ## Adımlar
 | # | Adım | Durum | Not |
@@ -10,8 +10,8 @@ Son güncelleme: 2026-10-17 13:15 — Claude (hisse tokeni filtresi + book_trunc
 | 2 | atk_client.py | bitti | hatalı paritede ok=False, çökme yok; commit 2d20e0a |
 | 3 | pick_pairs.py → pairs.json | bitti | hisse/ETF tokenleri hariç, 20 parite yeniden seçildi (13:14) |
 | 4 | logger.py arka planda | bitti | başlangıç: 2026-10-17 13:14:45, PID 20574, tur ~15 s |
-| 5 | RiskCircuitBreaker.sol + test vektörü | yapılacak | |
-| 6 | Fuji deploy | yapılacak | |
+| 5 | RiskCircuitBreaker.sol + signer.py + test vektörü | bitti | `forge test`: 14/14 geçti; Python↔Solidity digest aynı |
+| 6 | Fuji deploy | yapılacak | Remix ile Akif yapacak; `remix/RiskCircuitBreaker.flat.sol` hazır |
 | 7 | metrics.py | yapılacak | |
 | 8 | agent.py döngüsü | yapılacak | |
 | 9 | signer.py → kontrat uçtan uca | yapılacak | |
@@ -79,6 +79,53 @@ Süreler tek ölçüm (soğuk/sıcak ayrımı yapılmadı).
 - Snowtrace:
 - Deploy tx:
 
+### Araç zinciri (ÖLÇÜLEN)
+| Bileşen | Sürüm | Not |
+|---|---|---|
+| forge | 1.7.1-Homebrew | `forge --version` |
+| solc | 0.8.35 | foundry.toml'da sabit; svm önbelleğinde hazırdı (indirme yok) |
+| @openzeppelin/contracts | 5.6.1 | `npm install @openzeppelin/contracts@5` |
+| eth-account / eth-abi | 0.14.0 / 6.0.0 | requirements.txt'te sabit |
+| solc (flatten doğrulaması) | 0.8.36 (homebrew) | tek dosya hali bağımsız derlendi, 0 hata |
+
+- `evm_version = "cancun"` **zorunlu (ÖLÇÜLDÜ)**: OZ 5.6.1 `utils/Bytes.sol`
+  içinde `mcopy` kullanıyor, `paris` ile derleme Error 7755 veriyor.
+  Fuji'nin cancun opcode desteği DOĞRULANMADI (varsayım) — deploy'da sorun
+  çıkarsa mcopy kullanmayan daha eski bir OZ 5.x'e inilir.
+- OZ v5 yolları node_modules'teki gerçek kaynaktan doğrulandı:
+  `access/Ownable.sol` (pragma ^0.8.24, `constructor(address initialOwner)`),
+  `utils/Pausable.sol`, `utils/cryptography/{ECDSA,MessageHashUtils}.sol`
+  (`toEthSignedMessageHash(bytes32)`, `recover(bytes32,bytes)`).
+- **forge-std KULLANILMIYOR:** npm'deki `forge-std` paketi üçüncü taraf
+  ("Unofficial NPM distribution", v1.1.2, 1 yıldan eski), `forge install` ise
+  git'e yazar. Yerine `test/Cheats.sol` içinde asgari `Vm` arayüzü var;
+  bildirimler forge 1.7.1 ikilisinin gömülü cheatcode tablosundan çıkarıldı
+  (`strings -a $(which forge) | grep -oE "function sign\([^;]*;"`), cheatcode
+  adresi de aynı ikiliden doğrulandı.
+
+### Python ↔ Solidity byte uyumu (ÖLÇÜLDÜ)
+Sabit vektör: `test/vector.json` (YGG-USDT, buy, riskScore 4200,
+maxSafeSize 1000 USDT = 1e9 birim, timestamp 1760000000, chainId 43113).
+- Python digest  : `0xb244ca6490a662b1efa6736b947e00f0dafbbdd069b06dafeb0dcd02a66733e9`
+- Solidity digest: `0xb244ca6490a662b1efa6736b947e00f0dafbbdd069b06dafeb0dcd02a66733e9`
+- Python'un imzası `executeIntent`'te kabul edildi; `used[digest]` true oldu.
+- Negatif kontrol yapıldı: digest'in son nibble'ı bozulunca test FAIL,
+  imzanın son byte'ı bozulunca `ECDSAInvalidSignature()` → test bağlayıcı.
+- Vektör, testin deploy adresi için üretilir:
+  `CREATE(0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC, nonce 0)` =
+  `0x663F3ad617193148711d28f5334eE4Ed07016602`. Test, deploy ettiği adresi
+  vektördeki `contract` alanıyla karşılaştırır; sapma olursa açık mesajla
+  kırılır (`signer.py --vector` ile yenilenir). `--contract` ile başka adres
+  için de vektör üretilebilir.
+
+### Testler (14/14 geçti, `forge test -vv`)
+`test_DigestMatchesPython`, `test_HappyPath`, `test_RevertExceedsSafeSize`
+(suggestedParts=10 doğrulandı), `test_RevertStale`, `test_RevertFutureTimestamp`,
+`test_RevertBadSigner`, `test_RevertReplay`, `test_RevertRiskTooHigh`,
+`test_RevertNoSafeSize`, `test_RevertBadSide`, `test_PauseBlocks`,
+`test_SetOracleOnlyOwner`, `test_SetOracleRotates` (eski oracle imzası
+artık `BadSigner`), `test_SetRiskThresholdOnlyOwner`.
+
 ## Logger
 - Komut: `nohup caffeinate -i .venv/bin/python logger.py > logger.log 2>&1 &`
 - PID: 20574 (caffeinate 20576) — başlangıç 2026-10-17 13:14:45 (yerel, +03)
@@ -92,6 +139,10 @@ Süreler tek ölçüm (soğuk/sıcak ayrımı yapılmadı).
 ## Açık sorunlar
 - `state` alanının `live` dışındaki değerleri TR'de hiç görülmedi → filtre
   pratikte etkisiz ama korunuyor.
+- **Fuji'nin cancun desteği doğrulanmadı** (OZ 5.6.1 cancun zorunlu kılıyor).
+  Deploy sırasında görülecek; sorun çıkarsa OZ sürümü düşürülür.
+- Deploy henüz yok → kontrat adresi, oracle adresi ve Snowtrace linkleri boş.
+  `signer.py` gerçek imzaları deploy edilen adrese göre üretecek (parametre).
 
 ## Kapanan sorunlar
 - **Hisse tokenleri (KAPANDI 13:14):** `instCategory=3` filtresi eklendi,
@@ -108,6 +159,11 @@ Süreler tek ölçüm (soğuk/sıcak ayrımı yapılmadı).
 - Hisse/ETF tokenleri (`instCategory="3"`) seçimden hariç.
 - Yüzdelik %40–70 dilimi: filtreden geçen 295 paritenin 118..206 arası (88
   parite); 20 parite eşit aralıkla (deterministik `round(i*step)`).
+- Kontratta CLAUDE.md madde 6'ya EK olarak iki şey var (adım 2 talimatından):
+  `used[digest]` tekrar kullanım engeli (`AlreadyUsed`) ve `MAX_FUTURE = 60`
+  sn ileri zaman payı (saat sapması; aşılırsa `StaleScore`).
+- `maxSafeSize` USDT→1e6 çevrimi AŞAĞI yuvarlar (yukarı yuvarlamak güvenli
+  tutarı şişirirdi).
 - Yeni 20 parite (13:14, hacim 51K–358K USDT): ATOM, NES, ZBCN, 2Z, UMA,
   OKSOL, AVNT, OFC, KAITO, ENS, ENJ, RE, VELODROME, FLOKI, WCT, SOPH, ROBO,
   API3, IRYS, BIGTIME (hepsi `-USDT`, hepsi `book_truncated=False`).

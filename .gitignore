@@ -7,3 +7,7 @@ __pycache__/
 .DS_Store
 memory_v1.db
 memory_v1.db-*
+node_modules/
+out/
+cache/
+broadcast/

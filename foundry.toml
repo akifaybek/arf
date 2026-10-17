@@ -1,0 +1,22 @@
+[profile.default]
+src = "contracts"
+test = "test"
+out = "out"
+libs = ["node_modules"]
+remappings = ["@openzeppelin/=node_modules/@openzeppelin/"]
+
+# solc 0.8.35 SABIT: OZ v5.6.1'in en yuksek pragma istegi ^0.8.24
+# (access/Ownable.sol). 0.8.35 svm onbelleginde hazir, indirme gerekmiyor.
+solc = "0.8.35"
+
+# evm_version = "cancun" ZORUNLU (OLCULDU): OZ 5.6.1 utils/Bytes.sol `mcopy`
+# kullaniyor, "paris" ile derleme hata veriyor (Error 7755).
+# Fuji'nin cancun opcode'larini destekledigi BU OTURUMDA DOGRULANMADI (VARSAYIM);
+# deploy'da sorun cikarsa alternatif, mcopy kullanmayan daha eski bir OZ 5.x.
+evm_version = "cancun"
+
+optimizer = true
+optimizer_runs = 200
+
+# test/vector.json'u (Python imza vektoru) okumak icin
+fs_permissions = [{ access = "read", path = "./test" }]
