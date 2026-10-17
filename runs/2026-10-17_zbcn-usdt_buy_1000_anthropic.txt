@@ -1,0 +1,36 @@
+
+==============================================================================
+ARF — islem oncesi icra kontrolu: ZBCN-USDT buy 1,000 USDT
+==============================================================================
+
+KARAR IZI (3/12 arac cagrisi, mod: LLM planlayici)
+   1. get_orderbook({"symbol": "ZBCN-USDT"})   797 ms
+      -> {"ok": true, "symbol": "ZBCN-USDT", "data_age_s": 0.0, "bid_depth_0.5pct_usdt": 867, "ask_depth_0.5pct_usdt": 1247, "bid_depth_1pct_usdt": 2208, "ask_depth_1pct_usdt": 2325, "bid_depth_2pct_usdt": 3700, "ask_depth_2pct_u…
+   2. compute_metric({"symbol": "ZBCN-USDT", "side": "buy", "size_usdt": 1000.0})   684 ms
+      -> {"ok": true, "yetkili_olcum": true, "symbol": "ZBCN-USDT", "side": "buy", "size_usdt": 1000.0, "status": "OK", "riskScore": 877, "maxSafeSize_usdt": 5226.65, "kayma_bps": 20.2, "fills": true, "data_age_s": 0.001, "hafiza…
+   3. sign_score({})   156 ms
+      -> {"ok": true, "digest": "0x19246bb5cc65be9d3169e153e3563394294559ce410cef8104783c43604b1471", "signer": "0x3267103eB5d4F4F6350d0D03327De7637a56d385", "riskScore_0_10000": 877, "maxSafeSize_usdt": 5226.651815147478, "maxSa…
+   4. [not] LLM: anthropic/claude-haiku-5-5 (3 istek, 6468+724 token, ~$0.001009)
+   5. [not] deterministik karar: ONAY (tutar guvenli tutarin icinde; esik 5000 [zincir]) | LLM onerisi deterministik kararla ayni
+   6. [not] imzalandi: digest 0x77ee8a0b0c5c6998… (riskScore 877, maxSafeSize 5226651815)
+
+LLM OKUMASI (guven: orta, oneri: ONAY)
+  hipotez: 1000 USDT'lik ZBCN-USDT alis emri mevcut tahtada guvenli bir sekilde icra edilebilir.
+  - compute_metric: status OK, riskScore 877/10000, maxSafeSize 5226.65 USDT (istenen 1000 USDT bu sinirin altinda)
+  - compute_metric: kayma 20.2 bps, dolum saglandi (fills: true), kitap kesilmedi (book_truncated: false)
+  - get_orderbook: veri yasi 0.0 s, spread 7.95 bps, mid 0.00213955
+  - compute_metric: derinlik orani 1.24, anomali_z 0.79, hafiza noktasi 120
+  - sign_score: riskScore ve maxSafeSize deterministik olcumden imzalandi (digest 0x19246bb5...)
+  gerekce: Risk skoru 877 ile dusuk, istenen 1000 USDT maxSafeSize 5226.65 USDT'nin altinda ve veri taze, ancak 20.2 bps kayma goz onunde bulundurulmali.
+
+SONUC
+  karar           : ONAY   (deterministik: ONAY, LLM: ONAY)
+  birlestirme     : LLM onerisi deterministik kararla ayni
+  durum           : OK  veri yasi: 0.001 sn
+  riskScore       : 877 / esik 5000
+  maxSafeSize     : 5,226.65 USDT
+  kayma @ tutar   : 20.20 bps
+  imza            : VAR  digest 0x77ee8a0b0c5c69985b3d99b7c843d094c430f3aee96487c22a479fa107879add
+  LLM             : anthropic/claude-haiku-5-5  istek=3 tekrar=0 token=6468+724 llm_ms=6649  maliyet=~$0.001009
+  LLM zinciri     : anthropic -> gemini  (saglayici degisimi: 0)
+  toplam sure     : 12919 ms

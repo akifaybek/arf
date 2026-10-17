@@ -210,7 +210,33 @@ BIGTIME (6.216). Diğer 14'ü 10k'yı da kaldırıyor (RE-USDT 186K'ya kadar).
 
 ## Agent + LLM (adım 8 — agent.py, llm.py)
 
-### ÖLÇÜLEN — LLM sağlayıcı
+### Sağlayıcı zinciri (adım 5b): Anthropic ana, Gemini yedek
+`LLM_PROVIDER` ile başlar, çökerse sıradaki sağlayıcıya geçer, hepsi düşerse
+`LLMUnavailable` → deterministik plan. Ölü sağlayıcı aynı koşuda bir daha
+denenmez (kota boşa yakılmasın). Hangi sağlayıcı/model kullanıldığı trace'e
+ve sonuca yazılır (`llm.provider`, `llm.model`, `llm.chain`,
+`llm.provider_switches`).
+
+| Konu | Ölçüm |
+|---|---|
+| SDK | `anthropic` **1.15.0** |
+| Model | **`claude-haiku-5-5`** — `models.retrieve` ile DOĞRULANDI: "Claude Haiku 5.5", max_input 1.000.000, max_output 128.000 (404 yok) |
+| Fiyat | Resmi fiyat sayfasından doğrulandı: ≤100k prompt **$0.10/MTok girdi, $0.50/MTok çıktı** (cache hit $0.01); >100k prompt $0.50/$2.50 |
+| Duman testi (2 gerçek çağrı) | Araç turu **1380 ms**, sonuç turu **873 ms**; 1006 girdi + 137 çıktı token; **~$0.000169** |
+| Gerçek agent koşusu | 3 istek, 3 araç çağrısı, final JSON şemaya uygun, **6468+724 token, ~$0.001009**, toplam 12.919 ms (kayıt: `runs/2026-10-17_zbcn-usdt_buy_1000_anthropic.txt`) |
+
+Tool use döngüsü resmi dokümana göre: asistanın `tool_use` blokları geçmişe
+**aynen** konur (`_raw`), sonuçlar tek bir user mesajında `tool_result` olarak
+ve **aynı `tool_use_id`** ile geri verilir; başarısız araç sonucu
+`is_error: true` taşır. Sağlayıcı ortada değişirse id'ler sentezlenerek
+geçmiş bozulmadan devam edilir.
+
+**Koşudan çıkan düzeltme:** `sign_score` çıktısı `maxSafeSize`'ı birim
+etiketi olmadan 1e6 ölçekli döndürüyordu; model bunu "birim tutarsızlığı"
+sanıp güveni düşürdü. Çıktı artık `maxSafeSize_usdt` +
+`maxSafeSize_contract_units_1e6` olarak etiketli.
+
+### ÖLÇÜLEN — Gemini (artık yedek)
 | Konu | Ölçüm |
 |---|---|
 | SDK | `google-genai` **2.31.0** (paket kaynağından doğrulandı: `client.models.generate_content`, `response.function_calls`, `types.Part.from_function_response`, `parameters_json_schema`) |
@@ -283,11 +309,10 @@ Bu ölçümlerin kodda karşılığı:
 - `test/vector_fuji.json` canlı adres için üretildi ama imzası **anvil test
   anahtarıyla** (bilerek: gerçek oracle imzası repoya girmez) → o dosyadaki
   imza Fuji'de `BadSigner` verir, digest'i ise zincirle birebir aynı.
-- **LLM kotası demo riski:** ücretsiz katman model başına günlük 20 istek.
-  Bir agent koşusu 3–5 istek yakıyor → model başına ~4–6 koşu/gün.
-  `gemini-3.8-flash` kotası bugün doldu; zincir `gemini-3.5-flash` ile
-  devam ediyor. Demo öncesi gereksiz koşu yapılmamalı; faturalandırma açılırsa
-  sınır kalkar. Kota bitse bile ürün çalışıyor (deterministik plan).
+- **LLM kotası (ÇÖZÜLDÜ, adım 5b):** ana sağlayıcı Anthropic
+  (`claude-haiku-5-5`, koşu başına ~$0.001) — günlük istek sınırı sorunu yok.
+  Gemini yedekte kaldı; onun ücretsiz katman sınırı model başına günlük 20
+  istek. Üçüncü katman hâlâ deterministik plan, yani LLM'siz de çalışıyor.
 - Diğer modellerin günlük kotasının da 20 olup olmadığı DOĞRULANMADI
   (yalnızca 3.8-flash'ın hata mesajında `quotaValue: 20` görüldü).
 

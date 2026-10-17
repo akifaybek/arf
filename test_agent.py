@@ -391,3 +391,142 @@ def test_unfillable_size_is_red_not_bol():
     # tahta 303 USDT tasiyor; istenen 1000 -> dolum yok, no_fill bileseni dolu
     metric_steps = [e for e in res["trace"] if e["tool"] == "compute_metric"]
     assert '"fills": false' in metric_steps[-1]["summary"]
+
+
+# =============================================================================
+# Saglayici zinciri (anthropic -> gemini -> deterministik)
+# =============================================================================
+
+class FailingProvider(llm_mod.BaseProvider):
+    """Her cagrida kota hatasi veren saglayici (ana saglayici taklidi)."""
+
+    name = "anthropic"
+
+    def __init__(self, model=None):
+        super().__init__(model=model or "fail-1")
+
+    def chat_with_tools(self, messages, tools, system=None, temperature=0.0):
+        self.stats["requests"] += 1
+        raise llm_mod.LLMUnavailable("test: kota bitti (per day)")
+
+
+class ScriptedProvider(llm_mod.BaseProvider):
+    """Senaryoyu sirayla donduren saglayici (yedek taklidi)."""
+
+    name = "gemini"
+    script = [metric_call(100.0), final_step("ONAY")]
+
+    def __init__(self, model=None):
+        super().__init__(model=model or "work-1")
+        self.calls = 0
+
+    def chat_with_tools(self, messages, tools, system=None, temperature=0.0):
+        self.calls += 1
+        self.stats["requests"] += 1
+        self.stats["tokens"] += 10
+        self.stats["tokens_in"] += 8
+        self.stats["tokens_out"] += 2
+        return self.script[min(self.calls - 1, len(self.script) - 1)]
+
+
+@pytest.fixture
+def chain_providers(monkeypatch):
+    """llm.PROVIDERS'i sahte saglayicilarla degistirir (ag yok)."""
+    def _apply(first, second):
+        monkeypatch.setattr(llm_mod, "PROVIDERS", {"anthropic": first, "gemini": second})
+        return llm_mod.ProviderChain(["anthropic", "gemini"])
+    return _apply
+
+
+def test_provider_chain_falls_back_to_second(chain_providers):
+    chain = chain_providers(FailingProvider, ScriptedProvider)
+    out = chain.chat_with_tools([{"role": "user", "text": "x"}], tools=[])
+
+    assert out["tool_calls"][0]["name"] == "compute_metric"
+    assert chain.provider_name == "gemini"
+    st = chain.stats
+    assert st["provider"] == "gemini"
+    assert st["requests"] == 2            # 1 basarisiz + 1 basarili
+    assert any("anthropic" in e for e in st["errors"])
+
+
+def test_provider_chain_all_fail_raises(chain_providers):
+    chain = chain_providers(FailingProvider, FailingProvider)
+    with pytest.raises(llm_mod.LLMUnavailable):
+        chain.chat_with_tools([{"role": "user", "text": "x"}], tools=[])
+
+
+def test_provider_chain_skips_dead_provider_on_next_call(chain_providers):
+    """Olu saglayici bir daha denenmez (kota bosa yakilmasin)."""
+    chain = chain_providers(FailingProvider, ScriptedProvider)
+    chain.chat_with_tools([{"role": "user", "text": "x"}], tools=[])
+    before = chain.stats["requests"]
+    chain.chat_with_tools([{"role": "user", "text": "y"}], tools=[])
+    # ikinci turda yalnizca calisan saglayiciya gidildi
+    assert chain.stats["requests"] == before + 1
+
+
+def test_agent_uses_chain_fallback(chain_providers):
+    """anthropic coker -> gemini planlar -> karar ve imza uretilir."""
+    chain = chain_providers(FailingProvider, ScriptedProvider)
+    res = agent.run_check(SYMBOL, "buy", 100.0, provider=chain, deps=FakeDeps())
+
+    assert res["decision"] == "ONAY"
+    assert res["llm"]["provider"] == "gemini"
+    assert res["llm"]["chain"] == ["anthropic", "gemini"]
+    assert res["llm_suggestion"] == "ONAY"
+    assert res["signed_attestation"] is not None
+    assert res["llm"]["mode"] == "LLM planlayici"
+
+
+def test_agent_chain_all_fail_goes_deterministic(chain_providers):
+    chain = chain_providers(FailingProvider, FailingProvider)
+    res = agent.run_check(SYMBOL, "buy", 100.0, provider=chain, deps=FakeDeps())
+
+    assert res["llm"]["mode"] == "deterministik (LLM kesildi)"
+    tools = [e["tool"] for e in res["trace"] if e["tool"]]
+    assert tools[:4] == ["get_orderbook", "get_candles", "compute_metric", "sign_score"]
+    assert res["decision"] == "ONAY"
+    assert res["signed_attestation"] is not None
+
+
+def test_provider_order_puts_env_provider_first(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    assert llm_mod.provider_order()[0] == "gemini"
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    assert llm_mod.provider_order()[0] == "anthropic"
+    # bilinmeyen ad -> varsayilan sira, cokme yok
+    monkeypatch.setenv("LLM_PROVIDER", "sacma")
+    assert llm_mod.provider_order() == ["anthropic", "gemini"]
+
+
+def test_cost_estimate_matches_official_prices():
+    # Haiku 5.5 (<=100k prompt): girdi $0.10/MTok, cikti $0.50/MTok
+    cost = llm_mod.estimate_cost_usd("claude-haiku-5-5", 1_000_000, 1_000_000)
+    assert cost == pytest.approx(0.60)
+    assert llm_mod.estimate_cost_usd("bilinmeyen-model", 1000, 1000) is None
+
+
+def test_anthropic_tool_result_conversion_keeps_ids():
+    """tool_use id'si tool_result'a aynen tasinmali (resmi dokuman kurali).
+
+    `_to_messages` saf cevrim yaptigi icin self kullanmiyor; None ile cagrilir
+    (saglayici kurmak API anahtari isteyecekti, test ag kullanmaz).
+    """
+    msgs = [
+        {"role": "user", "text": "olc"},
+        {"role": "model", "tool_calls": [{"name": "compute_metric", "args": {}, "id": "toolu_42"}]},
+        {"role": "tool", "name": "compute_metric", "id": "toolu_42", "response": {"ok": True}},
+    ]
+    out = llm_mod.AnthropicProvider._to_messages(None, msgs)
+    assert out[1]["role"] == "assistant"
+    assert out[1]["content"][0]["id"] == "toolu_42"
+    assert out[2]["content"][0]["tool_use_id"] == "toolu_42"
+    assert out[2]["content"][0].get("is_error") is None
+
+
+def test_anthropic_marks_failed_tool_results_as_error():
+    msgs = [{"role": "tool", "name": "get_orderbook", "id": "toolu_7",
+             "response": {"ok": False, "error": "tahta yok"}}]
+    out = llm_mod.AnthropicProvider._to_messages(None, msgs)
+    assert out[0]["content"][0]["is_error"] is True

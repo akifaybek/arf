@@ -341,9 +341,14 @@ class AgentSession:
         att, reason = self.sign_current()
         if att is None:
             return {"ok": False, "error": reason}
+        # Birimler ACIKCA etiketli: kontrat USDT x 1e6 tamsayisi bekliyor;
+        # etiketsiz birakildiginda model bunu birim tutarsizligi saniyor.
         return {"ok": True, "digest": att["digest"], "signer": att["signer"],
-                "riskScore": att["riskScore"], "maxSafeSize": att["maxSafeSize"],
-                "not": "sayilar deterministik olcumden geldi"}
+                "riskScore_0_10000": att["riskScore"],
+                "maxSafeSize_usdt": att["maxSafeSizeUsdt"],
+                "maxSafeSize_contract_units_1e6": att["maxSafeSize"],
+                "not": "sayilar deterministik olcumden geldi; kontrat birimi "
+                       "USDT x 1e6 (6 ondalik), USDT degeri ayrica verildi"}
 
     # --- imza ---------------------------------------------------------------
 
@@ -541,7 +546,8 @@ def run_check(symbol, side, size_usdt, provider=None, deps=None, use_llm=True,
         llm_info["mode"] = "deterministik (--no-llm)"
 
     if provider is not None:
-        llm_info["provider"] = provider.name
+        # Zincirde aktif saglayici ilk cagridan sonra belli olur
+        llm_info["provider"] = getattr(provider, "provider_name", None) or provider.name
         llm_info["model"] = provider.model
         llm_info["mode"] = "LLM planlayici"
         messages = [{
@@ -571,8 +577,9 @@ def run_check(symbol, side, size_usdt, provider=None, deps=None, use_llm=True,
                                          f"cagrilari atlandi")
                             break
                         out = session.call_tool(call["name"], call.get("args"))
+                        # id: Anthropic tool_result eslesmesi icin sart
                         messages.append({"role": "tool", "name": call["name"],
-                                         "response": out})
+                                         "response": out, "id": call.get("id")})
                     continue
 
                 llm_final, perr = parse_final(step["final"])
@@ -596,11 +603,27 @@ def run_check(symbol, side, size_usdt, provider=None, deps=None, use_llm=True,
             llm_info["mode"] = "deterministik (LLM kesildi)"
             fell_back = True
 
-        llm_info["requests"] = provider.stats["requests"]
-        llm_info["ms"] = provider.stats["ms"]
-        llm_info["tokens"] = provider.stats["tokens"]
-        llm_info["retries"] = provider.stats["retries"]
-        llm_info["errors"] = list(provider.stats.get("errors") or [])[-3:]
+        st = provider.stats
+        llm_info.update({
+            "provider": st.get("provider") or llm_info["provider"],
+            "model": st.get("model") or llm_info["model"],
+            "requests": st.get("requests", 0),
+            "ms": st.get("ms", 0),
+            "tokens": st.get("tokens", 0),
+            "tokens_in": st.get("tokens_in", 0),
+            "tokens_out": st.get("tokens_out", 0),
+            "cost_usd": round(st.get("cost_usd", 0.0), 6),
+            "retries": st.get("retries", 0),
+            "chain": st.get("chain"),
+            "provider_switches": st.get("provider_switches", 0),
+            "errors": list(st.get("errors") or [])[-3:],
+        })
+        session.note(f"LLM: {llm_info['provider']}/{llm_info['model']} "
+                     f"({llm_info['requests']} istek, "
+                     f"{llm_info['tokens_in']}+{llm_info['tokens_out']} token"
+                     + (f", ~${llm_info['cost_usd']:.6f}" if llm_info["cost_usd"] else "")
+                     + (f", saglayici degisimi {llm_info['provider_switches']}"
+                        if llm_info["provider_switches"] else "") + ")")
         if llm_final:
             llm_suggestion = llm_final.get("karar_onerisi")
 
@@ -722,7 +745,12 @@ def print_report(res, show_attestation=False):
     llm = res["llm"] or {}
     print(f"  LLM             : {llm.get('provider')}/{llm.get('model')}  "
           f"istek={llm.get('requests')} tekrar={llm.get('retries')} "
-          f"token={llm.get('tokens')} llm_ms={llm.get('ms')}")
+          f"token={llm.get('tokens_in')}+{llm.get('tokens_out')} "
+          f"llm_ms={llm.get('ms')}"
+          + (f"  maliyet=~${llm['cost_usd']:.6f}" if llm.get("cost_usd") else ""))
+    if llm.get("chain"):
+        print(f"  LLM zinciri     : {' -> '.join(llm['chain'])}  "
+              f"(saglayici degisimi: {llm.get('provider_switches', 0)})")
     for e in (llm.get("errors") or []):
         print(f"  LLM hatasi      : {e}")
     print(f"  toplam sure     : {res['total_ms']} ms")

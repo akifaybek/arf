@@ -14,7 +14,8 @@ rlp==5.0.0
 web3==8.0.0
 python-dotenv==1.2.4
 
-# LLM planlayici (llm.py) — Gemini resmi SDK'si
+# LLM planlayici (llm.py) — ana saglayici Anthropic, yedek Gemini
+anthropic==1.15.0
 google-genai==2.31.0
 
 # Testler (test_metrics.py, test_agent.py)
