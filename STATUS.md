@@ -18,7 +18,7 @@ Son güncelleme: 2026-10-17 16:55 — Claude (demo.py 3 sahne + fail-closed zinc
 | 10 | Trader niyeti + revert sahnesi | bitti | `demo.py 2`: ExceedsSafeSize ön izleme + zincirde doğrulandı |
 | 11 | Fail-closed sahnesi | bitti | `demo.py 3`: ARF_FEED_DOWN → imza yok; BadSigner zincirde doğrulandı |
 | 12 | (ops.) mcp_server.py | yapılacak | |
-| 13 | Streamlit app.py | yapılacak | |
+| 13 | Streamlit app.py | bitti | 3 sütun, 3 sahne butonu; HTTP 200, 3/3 sahne headless hatasız |
 | 14 | README + yedek video + prova | yapılacak | |
 
 ## Doğrulanmış ATK komutları
@@ -207,6 +207,42 @@ BIGTIME (6.216). Diğer 14'ü 10k'yı da kaldırıyor (RE-USDT 186K'ya kadar).
   CLAUDE.md'de kayma/derinlik/anomali/spread olarak sayılmış).
 - `scan_demo.py` aday sıralaması: önce `riskScore ≤ 5000`, sonra 1k/10k
   sınırlarına en büyük pay.
+
+## Streamlit arayüzü (adım 6b — app.py)
+
+`streamlit run app.py` · Streamlit **1.66.0**. **İş mantığı yok:** sadece
+`agent.run_check`, `chain.simulate_only/execute_intent/sign_attestation_with_trader`
+çağrılıyor. Tek ekran, 3 sütun: sol karar izi + bütçe barı (kullanılan/12) +
+LLM hipotez/kanıt/güven + karar kaynağı; orta metrikler (riskScore/eşik,
+maxSafeSize, icra maliyeti bps, veri yaşı) + büyük karar rozeti + bölme
+önerisi; sağ kontrat cevabı + explorer linki + "Zincirde doğrulanmış
+kanıtlar" (5 gerçek tx). Yan panel: parite, "LLM kullan" (açık),
+**"Zincire gönder" (varsayılan KAPALI)**. Sahne 3'te üstte kırmızı
+"SIMULASYON: veri kesintisi + yetkisiz imza" bandı. Hata ekranı çökertmiyor,
+kutuda gösteriliyor (test edildi).
+
+**Doğrulama:** `streamlit run` → ana sayfa **HTTP 200**, `/_stcore/health`
+**HTTP 200**. 3 sahne headless çağrıldı, hata yok, `sent=False`:
+sahne 1 `SIMULATED_OK` (3,0 sn), sahne 2 `SIMULATED_REVERT`
+`ExceedsSafeSize(…, suggestedParts=2)` (3,3 sn), sahne 3 `SIMULATED_REVERT`
+`BadSigner(recovered=0x5d07…233d)` (0,6 sn).
+
+### HATA ve DÜZELTME: `simulate_only` tx gönderiyordu (1 istenmeyen tx)
+`chain.simulate_only`, adına rağmen yalnızca **revert durumunda** gönderimi
+atlıyordu; eth_call **geçerse** `execute_intent` tx'i gönderiyordu. app.py
+sahne 1'in ilk headless denemesinde bu yüzden **istenmeyen bir gerçek tx**
+gitti:
+- tx **`0x82f9fd48642b5f0777d85b724762294f634530ee9b38999e9f7eb4837fcf702b`**
+  (blok 59602206, `IntentApproved`, amount 1000000000, riskScore 1760,
+  maxSafeSize 3329242561, caller trader) — zincir loglarından bulundu.
+- Düzeltme: `execute_intent(..., dry_run=False)` parametresi eklendi;
+  `dry_run=True` iken sonuç ne olursa olsun **gönderim yolu kapalı**
+  (`SIMULATED_OK` / `SIMULATED_REVERT`). `simulate_only` artık her zaman
+  `dry_run=True` geçiyor.
+- Regresyon kilidi: **`test_app_safety.py`, 8 test** — `simulate_only`
+  mutlaka `dry_run` geçmeli; `send=False` iken `execute_intent` çağrılırsa
+  test patlıyor (3 sahne için ayrı ayrı); `ARF_FEED_DOWN` koşudan sonra
+  temizleniyor; kanıt listesindeki tx hash'leri gerçek 32 bayt olmalı.
 
 ## Demo sahneleri (adım 6a — demo.py)
 

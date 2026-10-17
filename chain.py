@@ -337,13 +337,16 @@ def format_error(err):
 # =============================================================================
 
 def execute_intent(symbol, side, amount_usdt, attestation, w3=None, url=None,
-                   force_onchain=False, verbose=True):
+                   force_onchain=False, dry_run=False, verbose=True):
     """Imzali skoru kontrata goturur.
 
-    Once eth_call ile simule edilir. Simulasyon revert ederse:
-      force_onchain=False -> tx GONDERILMEZ, decode edilmis hata dondurulur
-      force_onchain=True  -> sabit gas limitiyle tx gonderilir (explorer'da
-                             revert eden tx gorunsun)
+    dry_run=True  -> SADECE eth_call; sonuc ne olursa olsun tx GONDERILMEZ
+                     (status: SIMULATED_OK / SIMULATED_REVERT).
+    dry_run=False -> once eth_call, sonra:
+      simulasyon gecerse            -> tx gonderilir
+      simulasyon revert + force_onchain=False -> tx GONDERILMEZ
+      simulasyon revert + force_onchain=True  -> sabit gas limitiyle gonderilir
+                                                 (revert explorer'da gorunsun)
 
     attestation: signer.sign_attestation ciktisi (ayni semboller/degerler).
     Doner: tx_hash, status, event / error, gas_used, confirm_ms, explorer.
@@ -406,6 +409,11 @@ def execute_intent(symbol, side, amount_usdt, attestation, w3=None, url=None,
         print(f"[sim] {symbol} {side} {amount_usdt:,.0f} USDT -> "
               f"{'GECER' if sim_ok else result['error_text']}")
 
+    if dry_run:
+        # Yalnizca on izleme: zincire HICBIR SEY yazilmaz
+        result["status"] = "SIMULATED_OK" if sim_ok else "SIMULATED_REVERT"
+        return result
+
     if not sim_ok and not force_onchain:
         result["status"] = "SIMULATED_REVERT"
         return result
@@ -467,9 +475,14 @@ def execute_intent(symbol, side, amount_usdt, attestation, w3=None, url=None,
 
 
 def simulate_only(symbol, side, amount_usdt, attestation, w3=None, url=None, verbose=True):
-    """Yalnizca eth_call: zincire hicbir sey yazmaz."""
+    """Yalnizca eth_call: zincire hicbir sey yazmaz (sonuc ne olursa olsun).
+
+    DIKKAT: dry_run bayragi SART. Bu bayrak eklenmeden once bu fonksiyon,
+    simulasyon GECTIGINDE tx gonderiyordu (app.py sahne 1'de istenmeyen bir
+    tx'e yol acti). Artik gonderim yolu tamamen kapali.
+    """
     return execute_intent(symbol, side, amount_usdt, attestation, w3=w3, url=url,
-                          force_onchain=False, verbose=verbose)
+                          force_onchain=False, dry_run=True, verbose=verbose)
 
 
 def explorer_link(tx_hash):

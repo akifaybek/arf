@@ -18,7 +18,10 @@ python-dotenv==1.2.4
 anthropic==1.15.0
 google-genai==2.31.0
 
-# Testler (test_metrics.py, test_agent.py)
+# Demo arayuzu (app.py)
+streamlit==1.66.0
+
+# Testler (test_metrics.py, test_agent.py, test_app_safety.py)
 pytest==9.1.1
 
 # Sonraki adimlarda eklenecek: web3, streamlit, LLM istemcisi.
