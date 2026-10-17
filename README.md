@@ -65,7 +65,7 @@ Muhafazakârlık sırası: **`VERI_YETERSIZ > RED > BOL > ONAY`**. LLM önerisi 
 
 ### Doğrulanmış işlem tablosu
 
-Aşağıdaki kayıtlar STATUS.md ve app.py'deki kanıt listesinden alınmıştır; bu dokümantasyon çalışmasında yeni işlem gönderilmedi veya explorer üzerinden yeniden doğrulama yapılmadı. STATUS'ta kısaltılan iki agent hash'i app.py'den tamamlandı. Revert sebebi proje kaydındaki çözümlemeye dayanır; explorer tek başına yalnızca başarısızlık gösterebilir.
+Aşağıdaki **7 gerçek tx**, güncel STATUS.md ve app.py ana kanıt listesinden alınmıştır. Demo kapsamındaki dört revert kontrolü (`ExceedsSafeSize`, `BadSigner`, `AlreadyUsed`, `StaleScore`) artık gerçek tx ile kaydedilmiştir. Bu dokümantasyon çalışmasında yeni işlem gönderilmedi veya explorer üzerinden yeniden doğrulama yapılmadı. STATUS'ta kısaltılan iki agent hash'i app.py'den tamamlandı. Revert sebebi proje kaydındaki çözümlemeye dayanır; explorer tek başına yalnızca başarısızlık gösterebilir.
 
 | Olay / kontrol | İşlem bağlantısı ve kanıt düzeyi |
 |---|---|
@@ -74,9 +74,12 @@ Aşağıdaki kayıtlar STATUS.md ve app.py'deki kanıt listesinden alınmıştı
 | ExceedsSafeSize, ilk zincir kontrolü | [0x175eaee2…bf0e5](https://explorer-test.avax.network/c-chain/tx/0x175eaee2cdce982ad58988c3d73bb08944bf3d62fbcf91dcab1a973b8f4bf0e5) · gerçek tx |
 | ExceedsSafeSize, agent 10.000 USDT | [0x80aeb849…667a6](https://explorer-test.avax.network/c-chain/tx/0x80aeb84999c64df29bec84dccedd6addb3b1c22adac4e69abd74fc29eb2667a6) · gerçek tx |
 | BadSigner, veri kesintisi sahnesinde yetkisiz imza | [0x0b05e13f…de98e](https://explorer-test.avax.network/c-chain/tx/0x0b05e13fa25cb379d62f715820266a32db08250b40b19e2474940b5311ede98e) · gerçek tx |
-| IntentApproved, eski simülasyon hatası sırasında | [0x82f9fd48…f702b](https://explorer-test.avax.network/c-chain/tx/0x82f9fd48642b5f0777d85b724762294f634530ee9b38999e9f7eb4837fcf702b) · istenmeyen gerçek tx, hata düzeltildi |
-| AlreadyUsed | **[BEKLİYOR]** gerçek tx hash'i · şimdilik yalnızca `eth_call` |
-| StaleScore | **[BEKLİYOR]** gerçek tx hash'i · şimdilik yalnızca `eth_call` |
+| AlreadyUsed, taze onayın ikinci kullanımı | [0xa1ad9514…f99a80](https://explorer-test.avax.network/c-chain/tx/0xa1ad95144f813310c2b6c96457b35be32f71c3290f53d632f2b46baffbf99a80) · gerçek tx |
+| StaleScore, eski ve kullanılmış onay | [0x0b290257…233a3](https://explorer-test.avax.network/c-chain/tx/0x0b29025776a1f03d8304fd01144ebe88741fe1d760ec405e5b8ebac9b91233a3) · gerçek tx |
+
+Ana listeye ek hazırlık işlemi: **IntentApproved, 1 USDT**, [0x0b4cfc04…d23530](https://explorer-test.avax.network/c-chain/tx/0x0b4cfc04d3c91d5fe0fe09667d66eb07ef1bc630c8cec6b13ab47fe07ad23530). Bu onay tüketilip 3 saniye sonra yeniden gönderilerek AlreadyUsed kanıtlandı.
+
+Geçmiş hata kaydı ayrıca korunur: simülasyon yolundan istenmeden gönderilen IntentApproved, [0x82f9fd48…f702b](https://explorer-test.avax.network/c-chain/tx/0x82f9fd48642b5f0777d85b724762294f634530ee9b38999e9f7eb4837fcf702b). Hata düzeltildi; bu işlem ana 7 tx sayısına dahil değildir.
 
 Diğer kontrat kontrolleri: `RiskTooHigh`, `NoSafeSize`, `BadSide`, `ZeroAddress`. Bunların gerçek tx ile doğrulandığı iddia edilmez. `used[digest]` aynı onayın ikinci kullanımını engeller. Ağ ve kontrat adresinin imzaya katılması başka ağ/kontrat üzerinde kullanımını sınırlar.
 
@@ -124,7 +127,9 @@ Tahta değiştiğinde sahne 1/2 kararları da değişebilir. Ağ veya LLM kotas�
 | LLM yanlış yorumlar veya yönlendirilmeye çalışılır | Yapısal veri, deterministik sayılar, argümansız imza aracı, muhafazakâr karar birleştirme | Uygulama karar etiketi zincirde imzalanmıyor |
 | Yanlış alarm | Zincirde parametrik risk eşiği, Bonferroni düzeltmesi | Robust z için dağılım kalibrasyonu ampirik olarak kanıtlanmadı |
 | Piyasa verisi kesilir/bayatlar | `INSUFFICIENT_DATA`, imza yok | Önceden verilmiş imza kontratın 300 sn penceresinde geçerli kalabilir; tüm eski imzalar anında iptal olmaz |
-| Aynı imza yeniden kullanılır | `AlreadyUsed`, digest tüketimi | Gerçek tx hash'i [BEKLİYOR], `eth_call` kanıtı mevcut |
+| Aynı imza yeniden kullanılır | Önce tazelik kontrolü: eski onay `StaleScore`; 300 sn penceresinde tüketilmiş onay `AlreadyUsed` | İki katman da gerçek tx ile ölçüldü |
+
+**İki katmanlı replay koruması:** kontrat tazelik kontrolünü replay kontrolünden önce yapar. Bu yüzden eski bir onay, daha önce kullanılmış olsa da `StaleScore` ile reddedilir; 300 saniyelik geçerlilik penceresindeki kullanılmış onay ise `AlreadyUsed` ile reddedilir. STATUS kaydında eski onay yaklaşık 1655 sn yaşındaydı; taze onay hazırlık işleminden 3 sn sonra tekrar gönderildi. Her iki yol da zincirde gerçek tx ile ölçüldü.
 
 **Acil çıkış / reduce-only bypass yalnızca kavramdır, kodlanmadı.**
 
@@ -134,7 +139,7 @@ Canlı piyasa ölçümleri 17 Ekim 2026 proje kayıtları ve hackathon notların
 
 | Ölçüm | Sonuç | Kaynak / kapsam |
 |---|---|---|
-| Zincir onayı | Yaklaşık 1,7–2,3 sn | STATUS gerçek tx kayıtları; işlem öncesi zincir kontrolü yaklaşık 2 sn ekliyor |
+| Zincir onayı | Yaklaşık 1,5–2,3 sn | STATUS gerçek tx kayıtları; yeni replay/tazelik kanıtları dahil, zincir kontrolü yaklaşık 2 sn ekliyor |
 | LLM istek ve maliyeti | Yaklaşık 3 istek, $0,001/koşu | STATUS koşu kaydı, token sayısından proje fiyat tablosuyla tahmin; güncel tarife iddiası değil |
 | LLM ile sahne süresi | Yaklaşık 9–12 sn | Demo kaydı; ayrı agent koşusu 12,919 sn |
 | LLM'siz sahne süresi | Yaklaşık 3 sn | Hackathon ölçüm notu; sahne/ağ koşulları değişir |
@@ -143,7 +148,7 @@ Canlı piyasa ölçümleri 17 Ekim 2026 proje kayıtları ve hackathon notların
 | ZBCN-USDT, 1.000 USDT | `ONAY`, skor yaklaşık 523, güvenli tutar yaklaşık 5.200–5.460 USDT, kayma yaklaşık 13 bps | Son hackathon ölçüm notu; canlı tahtada değişir |
 | Gün içi skor aralığı | 323–2841; eşik 5000 | Hackathon ölçüm notu; eşik zincirde parametrik |
 | Epizodik hafıza | 20 parite, 60 sn aralık | STATUS: logger başlangıcı 13:14:45, kesintisiz kayıt bildirimi; bu çalışmada süreç kontrol edilmedi |
-| Python testleri | **82 geçti / 82** | Bu dokümantasyon oturumunda `pytest -q`, ağsız testler; ortam dosyası yüklemesi ve önbellek yazımı kapalı |
+| Python testleri | **87 geçti / 87** | Claude bildirimi; burada açık kontrat adresi ortamdan verilerek ağsız testler tekrar koşuldu, ortam dosyası yüklemesi ve önbellek yazımı kapalı. Gerçek `.env` yükleme entegrasyonu bu koşuda sınanmadı |
 | Solidity testleri | 14 geçti / 14 | STATUS kaydı; burada yeniden çalıştırılmadı |
 
 ## 7. Varsayımlar ve dürüst sınırlar

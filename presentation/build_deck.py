@@ -128,11 +128,11 @@ rows(s, ["1.000 USDT: tahta uygunsa ONAY", "10.000 USDT: ExceedsSafeSize, N par�
 text(s, .85, 5.5, 11.6, .9, "Parça sayısı canlıdır. Agent ile kontratın hesabı birebir aynı.", 25, CYAN)
 text(s, .85, 6.45, 11.6, .35, "Varsayılan: eth_call ön izlemesi. Geçmiş gerçek tx kanıtları README'de.", 16, MUTED)
 
-s = slide("Kötü senaryoda ne oluyor?", "Organizatörün sorusunu doğrudan cevaplayayım: veri bozulunca imza yok, yetkisiz imza BadSigner alıyor ve tüketilmiş onay tekrar kullanılınca AlreadyUsed devreye giriyor. Oracle anahtarı çalınırsa owner pause ve setOracle ile müdahale ediyor; yanlış alarm için zincirde parametrik eşik ve nominal Bonferroni düzeltmesi var, ancak gerçek yanlış alarm oranını ölçtüğümü söylemiyorum. LLM'e sadece yapısal veri gidiyor ve sayılar deterministik kalıyor; tek oracle güveni sürüyor, önceden verilmiş imzalar geçerlilik penceresinde kullanılabilir ve acil çıkış yolu yalnızca kavram, bu yüzden çoklu oracle ile eşik imza sonraki adım.", 50)
-table = s.shapes.add_table(6, 2, Inches(.8), Inches(1.9), Inches(11.8), Inches(4.55)).table
+s = slide("Kötü senaryoda ne oluyor?", "Organizatörün sorusunu doğrudan cevaplayayım: veri bozulunca imza yok, yetkisiz imza BadSigner alıyor ve replay için önce tazelik kontrol ediliyor: eski onay StaleScore, üç yüz saniyelik pencere içindeki tüketilmiş onay AlreadyUsed ile reddediliyor; her iki katman da gerçek tx ile ölçüldü. Oracle anahtarı çalınırsa owner pause ve setOracle ile müdahale ediyor; yanlış alarm için zincirde parametrik eşik ve nominal Bonferroni düzeltmesi var, ancak gerçek yanlış alarm oranını ölçtüğümü söylemiyorum. LLM'e sadece yapısal veri gidiyor ve sayılar deterministik kalıyor; tek oracle güveni sürüyor, önceden verilmiş imzalar geçerlilik penceresinde kullanılabilir ve acil çıkış yolu yalnızca kavram, bu yüzden çoklu oracle ile eşik imza sonraki adım.", 50)
+table = s.shapes.add_table(6, 2, Inches(.8), Inches(1.9), Inches(11.8), Inches(4.4)).table
 table.columns[0].width = Inches(4.0)
 table.columns[1].width = Inches(7.8)
-data = [("Kötü senaryo", "Mevcut karşılık"), ("Oracle anahtarı çalınır", "pause + setOracle"), ("LLM yanlış yorumlar", "Yapısal veri + deterministik sayılar"), ("Yanlış alarm", "Parametrik eşik + Bonferroni"), ("Piyasa verisi kesilir", "İmza yok; yetkisiz imza BadSigner"), ("Onay tekrar kullanılır", "AlreadyUsed; gerçek tx [BEKLİYOR]")]
+data = [("Kötü senaryo", "Mevcut karşılık"), ("Oracle anahtarı çalınır", "pause + setOracle"), ("LLM yanlış yorumlar", "Yapısal veri + deterministik sayılar"), ("Yanlış alarm", "Parametrik eşik + Bonferroni"), ("Piyasa verisi kesilir", "İmza yok; yetkisiz imza BadSigner"), ("Taze tekrar / eski onay", "AlreadyUsed / StaleScore: gerçek tx")]
 for ri, pair in enumerate(data):
     for ci, val in enumerate(pair):
         cell = table.cell(ri, ci)
@@ -149,12 +149,41 @@ for ri, pair in enumerate(data):
                 r.font.size = Pt(22)
                 r.font.bold = ri == 0
                 r.font.color.rgb = RGBColor.from_string(FG)
-text(s, .85, 6.55, 11.6, .3, "Acil çıkış / reduce-only bypass: yalnızca kavram.", 16, MUTED)
+text(s, .85, 6.4, 11.6, .55, "Tazelik önce: eski onay StaleScore, taze tekrar AlreadyUsed.", 20, CYAN)
 
-s = slide("Ölçülen kanıt, açık sınırlar", "Zincirde IntentApproved, ExceedsSafeSize ve BadSigner gerçek işlem kayıtlarıyla gösterildi; AlreadyUsed ve StaleScore için elimizde şu anda yalnızca eth_call var, gerçek işlem hash'leri bekliyor. Kayıtlardaki zincir onayı yaklaşık iki saniye, LLM maliyeti koşu başına yaklaşık binde bir dolar ve bunlar örnek koşuların sonuçları; bu oturumda seksen iki Python testi geçti, on dört Solidity testi ise STATUS kaydından geliyor. Yirmi paritelik epizodik hafıza var ama tek oracle ve testnet sınırları sürüyor; ayrıca simülasyonun bir kez istemeden işlem gönderdiğini saklamıyorum, dry_run kilidi ve sekiz güvenlik testiyle bu yol kapatıldı.", 40)
-rows(s, ["Gerçek tx: IntentApproved, ExceedsSafeSize, BadSigner", "Yaklaşık 2 sn zincir onayı; yaklaşık $0,001 / LLM koşusu", "Python 82/82 bu oturum; Solidity 14/14 STATUS kaydı", "20 parite epizodik hafıza; kayıt aralığı 60 sn"], y=1.9, step=.95, size=25)
-text(s, .85, 5.85, 11.6, .7, "AlreadyUsed / StaleScore: eth_call; gerçek tx [BEKLİYOR].", 21, AMBER)
-text(s, .85, 6.5, 11.6, .35, "Sınır: tek oracle, testnet, varsayılan ağırlıklar; dolum hızı ölçülmüyor.", 16, MUTED)
+s = slide("Ölçülen kanıt, açık sınırlar", "Ana kanıt listesinde yedi gerçek tx var; IntentApproved ile demo kapsamındaki ExceedsSafeSize, BadSigner, AlreadyUsed ve StaleScore zincirde kaydedildi, taze replay kanıtı için bir USDT hazırlık işlemi ayrıca kullanıldı. Kontrat tazeliği replay kontrolünden önce denetlediği için eski kullanılmış onay StaleScore, geçerlilik penceresindeki kullanılmış onay AlreadyUsed alıyor; tablodaki bağlantılar bu gerçek işlemlere gidiyor. Güncel toplam seksen yedi Python testi burada ortam dosyası yüklemesi kapalı ve açık kontrat adresiyle geçti, on dört Solidity testi STATUS kaydı; yaklaşık iki saniye zincir onayı ve binde bir dolar LLM maliyeti örnek ölçümler, tek oracle ve testnet sınırları sürüyor.", 40)
+proofs = [
+    ("IntentApproved / ilk kontrol", "0x7bef94f297de147acf74dce1139eca659e982e2ae51a51f013b2d89071ba5173"),
+    ("IntentApproved / agent", "0xa5798d597f00a46e36c93a48f4423d46a18faf082d2006562140e4bd5eaacbbe"),
+    ("ExceedsSafeSize / ilk kontrol", "0x175eaee2cdce982ad58988c3d73bb08944bf3d62fbcf91dcab1a973b8f4bf0e5"),
+    ("ExceedsSafeSize / agent", "0x80aeb84999c64df29bec84dccedd6addb3b1c22adac4e69abd74fc29eb2667a6"),
+    ("BadSigner", TX_BAD),
+    ("AlreadyUsed", "0xa1ad95144f813310c2b6c96457b35be32f71c3290f53d632f2b46baffbf99a80"),
+    ("StaleScore", "0x0b29025776a1f03d8304fd01144ebe88741fe1d760ec405e5b8ebac9b91233a3"),
+]
+proof_table = s.shapes.add_table(8, 2, Inches(.8), Inches(1.85), Inches(11.8), Inches(3.8)).table
+proof_table.columns[0].width = Inches(6.5)
+proof_table.columns[1].width = Inches(5.3)
+for ri, pair in enumerate([("7 gerçek tx / ana kanıt listesi", "Fuji işlem bağlantısı"), *proofs]):
+    for ci, value in enumerate(pair):
+        cell = proof_table.cell(ri, ci)
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = RGBColor.from_string(PANEL if ri else "25483F")
+        cell.margin_left = Inches(.16)
+        cell.margin_top = cell.margin_bottom = Inches(.03)
+        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+        cell.text = value if ri == 0 or ci == 0 else value[:14] + "…" + value[-8:]
+        for para in cell.text_frame.paragraphs:
+            for run in para.runs:
+                run.font.name = FONT
+                run.font.size = Pt(20)
+                run.font.bold = ri == 0
+                run.font.color.rgb = RGBColor.from_string(CYAN if ri and ci else FG)
+                if ri and ci:
+                    run.hyperlink.address = "https://explorer-test.avax.network/c-chain/tx/" + value
+text(s, .85, 5.84, 11.6, .45, "Yaklaşık 2 sn zincir onayı; yaklaşık $0,001 / LLM koşusu", 22)
+text(s, .85, 6.32, 11.6, .45, "Python 87/87; Solidity 14/14 (STATUS); 20 parite epizodik hafıza", 20)
+text(s, .85, 6.78, 11.6, .25, "Sınır: tek oracle, testnet; ağırlıklar varsayım. 1 USDT hazırlık tx'i ayrıca README'de.", 14, MUTED)
 
 s = slide("Agent'lar için icra kontrolü servisi", "İlk müşteri ATK ile agent geliştiren ekipler ve bireysel kullanıcılar; önerilen model temel kontrolü ücretsiz tutup gerçek zamanlı API erişimini ücretlendirmek, ama ücret ödeme isteği ve gelir henüz doğrulanmadı. Sonraki adım çoklu oracle ve eşik imza, EIP-712 ile daha okunur imzalama, Almgren–Chriss icra planı, ardından OKX.ai listeleme ve çağrı başına ödeme; bunlar bugün kodlanmış özellikler değil, mainnet veya Avalanche L1 geçişi de bu aşamaların sonrasında değerlendirilecek. Bugün gösterebildiğim değer, güncel ATK tahtasından çıkan sayısal sınırın Fuji üzerinde onay veya redde dönüşmesi; repo ve kontrat açık, her emirden önce aynı soruyu soruyoruz: bu tahta bu emri kaldırır mı?​", 30)
 rows(s, ["Müşteri: ATK agent geliştiricileri ve bireyler", "Model: temel ücretsiz, gerçek zamanlı/API ücretli", "Kodlanmadı: çoklu oracle, EIP-712, icra planı", "Kodlanmadı: OKX.ai, HTTP 402, mainnet / L1"], y=1.85, step=.82, size=25)
@@ -188,6 +217,7 @@ for i, (s, expected) in enumerate(zip(check.slides, records), 1):
         assert sh.left + sh.width <= check.slide_width + 100
         assert sh.top + sh.height <= check.slide_height + 100
 summary = {"slides": len(check.slides), "aspect": "16:9", "notes_words": sum(r["note_words"] for r in records),
-           "target_seconds_including_demo": sum(r["target_seconds"] for r in records), "slides_detail": records}
+           "target_seconds_including_demo": sum(r["target_seconds"] for r in records), "slides_detail": records, "onchain_proofs": [{"event": event, "tx": tx} for event, tx in proofs],
+           "preparation_tx": "0x0b4cfc04d3c91d5fe0fe09667d66eb07ef1bc630c8cec6b13ab47fe07ad23530"}
 (ROOT / "validation.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 print(f"Üretildi: {out}; toplam {summary['notes_words']} not kelimesi, hedef {summary['target_seconds_including_demo']} sn")

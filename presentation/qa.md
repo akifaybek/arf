@@ -10,7 +10,9 @@ Prototipte Python ve Solidity'nin aynı payload'ı doğruladığı yolu kulland�
 
 **Replay nasıl engelleniyor?**
 
-Kontrat başarılı niyetin `digest` değerini `used` içinde tüketir; ikinci kullanım `AlreadyUsed` olur. Ağ ve kontrat adresi payload'a bağlıdır. AlreadyUsed şu anda `eth_call` ile doğrulandı, gerçek tx hash'i **[BEKLİYOR]**.
+Kontrat önce tazeliği, sonra `used[digest]` kaydını kontrol eder. Eski onay, kullanılmış olsa da `StaleScore`; 300 saniyelik pencere içindeki tüketilmiş onay `AlreadyUsed` ile reddedilir. İki katman da gerçek tx ile ölçüldü: [AlreadyUsed](https://explorer-test.avax.network/c-chain/tx/0xa1ad95144f813310c2b6c96457b35be32f71c3290f53d632f2b46baffbf99a80), [StaleScore](https://explorer-test.avax.network/c-chain/tx/0x0b29025776a1f03d8304fd01144ebe88741fe1d760ec405e5b8ebac9b91233a3). Ağ ve kontrat adresi de payload'a bağlıdır.
+
+AlreadyUsed için [1 USDT hazırlık işlemi](https://explorer-test.avax.network/c-chain/tx/0x0b4cfc04d3c91d5fe0fe09667d66eb07ef1bc630c8cec6b13ab47fe07ad23530) ile taze onay tüketildi, 3 sn sonra yeniden gönderildi. Eski ve kullanılmış onay yaklaşık 1655 sn yaşındayken StaleScore verdi.
 
 **İmza kimin adına, hangi emre bağlı?**
 
@@ -48,7 +50,7 @@ Agent geliştiricileri ve bireylere temel kontrol ücretsiz, gerçek zamanlı/AP
 
 **Maliyet ve gecikme?**
 
-Proje kayıtlarında LLM koşusu yaklaşık 3 istek ve token tablosuyla yaklaşık $0,001 maliyet; sahneler LLM ile yaklaşık 9–12 saniye, LLM'siz yaklaşık 3 saniye. Zincir onayı yaklaşık 1,7–2,3 saniye. Bunlar örnek koşu ölçümleri, uçtan uca 2 saniye veya servis garantisi demiyoruz.
+Proje kayıtlarında LLM koşusu yaklaşık 3 istek ve token tablosuyla yaklaşık $0,001 maliyet; sahneler LLM ile yaklaşık 9–12 saniye, LLM'siz yaklaşık 3 saniye. Yeni replay/tazelik işlemleri dahil zincir onayı yaklaşık 1,5–2,3 saniye. Bunlar örnek koşu ölçümleri, uçtan uca 2 saniye veya servis garantisi demiyoruz.
 
 ## Avalanche DevRel
 
@@ -66,7 +68,7 @@ Kontrat niyetin imzasını ve sınırlarını doğrular, `IntentApproved` üreti
 
 **Hangi revert'ler gerçekten zincirde?**
 
-Gerçek tx kayıtlarında ExceedsSafeSize ve BadSigner var, IntentApproved da gerçek tx ile kaydedildi. AlreadyUsed ve StaleScore şimdilik `eth_call`; hash'ler **[BEKLİYOR]**. Diğer kontrollerin kontrat/test kapsamını gerçek tx kanıtıyla karıştırmıyoruz.
+Ana kanıt listesinde 7 gerçek tx var: IntentApproved kayıtları ile demo kapsamındaki ExceedsSafeSize, BadSigner, AlreadyUsed ve StaleScore. 1 USDT hazırlık işlemi ayrıca kayıtlı. RiskTooHigh, NoSafeSize ve diğer kontroller için bu listede gerçek tx yok; “bütün revert yolları” ifadesini demo kapsamındaki dört kontrol için kullanıyoruz.
 
 ## Startup / ürün
 
@@ -88,7 +90,7 @@ Eşik ve ağırlıklar tasarım tercihleri, kalibre edilmiş parametreler değil
 
 **En kötü hata neydi?**
 
-Simülasyon yolu bir kez yanlışlıkla gerçek Fuji tx gönderdi. Kayıt saklandı, `dry_run` kilidi eklendi ve 8 güvenlik regresyon testi yazıldı. Bu oturumda toplam 82 Python testi geçti; hata kaydını README'de açıkça gösteriyoruz.
+Simülasyon yolu bir kez yanlışlıkla gerçek Fuji tx gönderdi. Kayıt saklandı, `dry_run` kilidi eklendi ve 8 güvenlik regresyon testi yazıldı. Güncel toplam 87/87 Python testi; burada ortam dosyası yüklemesi kapalı ve açık kontrat adresi ortamdan verilerek tekrar koşuldu, gerçek ortam dosyası yükleme entegrasyonu sınanmadı.
 
 **Demo sahne 3 gerçek kesinti mi?**
 

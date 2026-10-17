@@ -1,7 +1,7 @@
 {
   "slides": 9,
   "aspect": "16:9",
-  "notes_words": 738,
+  "notes_words": 764,
   "target_seconds_including_demo": 420,
   "slides_detail": [
     {
@@ -56,17 +56,17 @@
       "slide": 7,
       "title": "Kötü senaryoda ne oluyor?",
       "target_seconds": 45,
-      "note_characters": 626,
-      "note_words": 82,
-      "notes": "Organizatörün sorusunu doğrudan cevaplayayım: veri bozulunca imza yok, yetkisiz imza BadSigner alıyor ve tüketilmiş onay tekrar kullanılınca AlreadyUsed devreye giriyor. Oracle anahtarı çalınırsa owner pause ve setOracle ile müdahale ediyor; yanlış alarm için zincirde parametrik eşik ve nominal Bonferroni düzeltmesi var, ancak gerçek yanlış alarm oranını ölçtüğümü söylemiyorum. LLM'e sadece yapısal veri gidiyor ve sayılar deterministik kalıyor; tek oracle güveni sürüyor, önceden verilmiş imzalar geçerlilik penceresinde kullanılabilir ve acil çıkış yolu yalnızca kavram, bu yüzden çoklu oracle ile eşik imza sonraki adım."
+      "note_characters": 747,
+      "note_words": 102,
+      "notes": "Organizatörün sorusunu doğrudan cevaplayayım: veri bozulunca imza yok, yetkisiz imza BadSigner alıyor ve replay için önce tazelik kontrol ediliyor: eski onay StaleScore, üç yüz saniyelik pencere içindeki tüketilmiş onay AlreadyUsed ile reddediliyor; her iki katman da gerçek tx ile ölçüldü. Oracle anahtarı çalınırsa owner pause ve setOracle ile müdahale ediyor; yanlış alarm için zincirde parametrik eşik ve nominal Bonferroni düzeltmesi var, ancak gerçek yanlış alarm oranını ölçtüğümü söylemiyorum. LLM'e sadece yapısal veri gidiyor ve sayılar deterministik kalıyor; tek oracle güveni sürüyor, önceden verilmiş imzalar geçerlilik penceresinde kullanılabilir ve acil çıkış yolu yalnızca kavram, bu yüzden çoklu oracle ile eşik imza sonraki adım."
     },
     {
       "slide": 8,
       "title": "Ölçülen kanıt, açık sınırlar",
       "target_seconds": 40,
-      "note_characters": 637,
-      "note_words": 86,
-      "notes": "Zincirde IntentApproved, ExceedsSafeSize ve BadSigner gerçek işlem kayıtlarıyla gösterildi; AlreadyUsed ve StaleScore için elimizde şu anda yalnızca eth_call var, gerçek işlem hash'leri bekliyor. Kayıtlardaki zincir onayı yaklaşık iki saniye, LLM maliyeti koşu başına yaklaşık binde bir dolar ve bunlar örnek koşuların sonuçları; bu oturumda seksen iki Python testi geçti, on dört Solidity testi ise STATUS kaydından geliyor. Yirmi paritelik epizodik hafıza var ama tek oracle ve testnet sınırları sürüyor; ayrıca simülasyonun bir kez istemeden işlem gönderdiğini saklamıyorum, dry_run kilidi ve sekiz güvenlik testiyle bu yol kapatıldı."
+      "note_characters": 696,
+      "note_words": 92,
+      "notes": "Ana kanıt listesinde yedi gerçek tx var; IntentApproved ile demo kapsamındaki ExceedsSafeSize, BadSigner, AlreadyUsed ve StaleScore zincirde kaydedildi, taze replay kanıtı için bir USDT hazırlık işlemi ayrıca kullanıldı. Kontrat tazeliği replay kontrolünden önce denetlediği için eski kullanılmış onay StaleScore, geçerlilik penceresindeki kullanılmış onay AlreadyUsed alıyor; tablodaki bağlantılar bu gerçek işlemlere gidiyor. Güncel toplam seksen yedi Python testi burada ortam dosyası yüklemesi kapalı ve açık kontrat adresiyle geçti, on dört Solidity testi STATUS kaydı; yaklaşık iki saniye zincir onayı ve binde bir dolar LLM maliyeti örnek ölçümler, tek oracle ve testnet sınırları sürüyor."
     },
     {
       "slide": 9,
@@ -76,5 +76,36 @@
       "note_words": 97,
       "notes": "İlk müşteri ATK ile agent geliştiren ekipler ve bireysel kullanıcılar; önerilen model temel kontrolü ücretsiz tutup gerçek zamanlı API erişimini ücretlendirmek, ama ücret ödeme isteği ve gelir henüz doğrulanmadı. Sonraki adım çoklu oracle ve eşik imza, EIP-712 ile daha okunur imzalama, Almgren–Chriss icra planı, ardından OKX.ai listeleme ve çağrı başına ödeme; bunlar bugün kodlanmış özellikler değil, mainnet veya Avalanche L1 geçişi de bu aşamaların sonrasında değerlendirilecek. Bugün gösterebildiğim değer, güncel ATK tahtasından çıkan sayısal sınırın Fuji üzerinde onay veya redde dönüşmesi; repo ve kontrat açık, her emirden önce aynı soruyu soruyoruz: bu tahta bu emri kaldırır mı?​"
     }
-  ]
+  ],
+  "onchain_proofs": [
+    {
+      "event": "IntentApproved / ilk kontrol",
+      "tx": "0x7bef94f297de147acf74dce1139eca659e982e2ae51a51f013b2d89071ba5173"
+    },
+    {
+      "event": "IntentApproved / agent",
+      "tx": "0xa5798d597f00a46e36c93a48f4423d46a18faf082d2006562140e4bd5eaacbbe"
+    },
+    {
+      "event": "ExceedsSafeSize / ilk kontrol",
+      "tx": "0x175eaee2cdce982ad58988c3d73bb08944bf3d62fbcf91dcab1a973b8f4bf0e5"
+    },
+    {
+      "event": "ExceedsSafeSize / agent",
+      "tx": "0x80aeb84999c64df29bec84dccedd6addb3b1c22adac4e69abd74fc29eb2667a6"
+    },
+    {
+      "event": "BadSigner",
+      "tx": "0x0b05e13fa25cb379d62f715820266a32db08250b40b19e2474940b5311ede98e"
+    },
+    {
+      "event": "AlreadyUsed",
+      "tx": "0xa1ad95144f813310c2b6c96457b35be32f71c3290f53d632f2b46baffbf99a80"
+    },
+    {
+      "event": "StaleScore",
+      "tx": "0x0b29025776a1f03d8304fd01144ebe88741fe1d760ec405e5b8ebac9b91233a3"
+    }
+  ],
+  "preparation_tx": "0x0b4cfc04d3c91d5fe0fe09667d66eb07ef1bc630c8cec6b13ab47fe07ad23530"
 }
