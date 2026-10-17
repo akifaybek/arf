@@ -1,14 +1,15 @@
 # STATUS — Arf
 
-Son güncelleme: <saat> — <kim>
+Son güncelleme: 2026-10-17 13:05 — Claude (veri katmanı oturumu)
 
 ## Adımlar
 | # | Adım | Durum | Not |
 |---|------|-------|-----|
-| 1 | ATK CLI kurulum + doğrulama | yapılacak | |
-| 2 | atk_client.py | yapılacak | |
-| 3 | pick_pairs.py → pairs.json | yapılacak | |
-| 4 | logger.py arka planda | yapılacak | başlangıç saati: |
+| 0 | Proje iskeleti (git, venv, .env.example) | bitti | commit cfc5a4e |
+| 1 | ATK CLI kurulum + doğrulama | bitti | 1.4.8, TR sitesi; commit 5a1b43d |
+| 2 | atk_client.py | bitti | hatalı paritede ok=False, çökme yok; commit 2d20e0a |
+| 3 | pick_pairs.py → pairs.json | bitti | 20 parite, hepsi covers_band=True; commit 671a2b8 |
+| 4 | logger.py arka planda | bitti | başlangıç: 2026-10-17 13:03, PID 16027, tur ~15.5 s |
 | 5 | RiskCircuitBreaker.sol + test vektörü | yapılacak | |
 | 6 | Fuji deploy | yapılacak | |
 | 7 | metrics.py | yapılacak | |
@@ -69,8 +70,28 @@ Süreler tek ölçüm (soğuk/sıcak ayrımı yapılmadı).
 - Snowtrace:
 - Deploy tx:
 
+## Logger
+- Komut: `nohup caffeinate -i .venv/bin/python logger.py > logger.log 2>&1 &`
+- PID: 16027 — başlangıç 2026-10-17 13:03 (yerel)
+- DB: `memory.db`, tablo `snapshots`, index `idx_snapshots_inst_ts (inst, ts)`
+- Tur süresi ÖLÇÜLDÜ: ~15.5 s (20 parite × 1 orderbook + 1 tickers) → 60 s aralığı rahat
+- Durum kontrolü: `.venv/bin/python logger.py --status`
+
 ## Açık sorunlar
--
+- **Hisse tokenleri seçime girdi (KARAR GEREKİYOR):** `XMSFT-USDT`, `XAPLD-USDT`,
+  `XEWY-USDT` → `instCategory=3`, `openType=pre_quote`, `contTdSwTime` dolu.
+  ABD borsa seansına bağlı olabilirler; seans kapalıyken tahta donarsa likidite
+  rejimi ölçümü kirlenir. Spec'teki hariç tutma listesinde yoktu, bu yüzden
+  ÇIKARILMADI. Karar verilirse `pick_pairs.py` içine `instCategory != "3"`
+  filtresi eklenip yeniden seçim yapılır.
+- `state` alanının `live` dışındaki değerleri TR'de hiç görülmedi → filtre
+  pratikte etkisiz ama korunuyor.
 
 ## Kararlar / sapmalar
--
+- Hacim alanı olarak `volCcy24h` (USDT) kullanılıyor; `vol24h` baz cinsinden.
+- `orderbook --sz` her çağrıda 400 (ölçülen üst sınır).
+- `covers_band=False` artık "sığ tahta" değil **"400 seviye ±%2'ye yetmedi,
+  derinlik alt sınırdır"** anlamında; BTC-USDT'de böyle (ask +0.12%, bid −0.26%).
+  Seçilen 20 paritenin hepsi `covers_band=True`.
+- Yüzdelik %40–70 dilimi 436 paritenin 174..305 arası; 20 parite eşit aralıkla
+  (deterministik `round(i*step)`).
