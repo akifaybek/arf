@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     bid_depth_2pct_usdt  REAL,
     ask_depth_2pct_usdt  REAL,
     vol24h_usdt          REAL,
-    covers_band          INTEGER,           -- 1/0/NULL
+    book_truncated       INTEGER,           -- 1/0/NULL; 1 = 400 seviye +-%2'ye
+                                            -- ulasmadi, derinlik ALT SINIR
     ok                   INTEGER NOT NULL,  -- 1/0
     latency_ms           INTEGER,
     error                TEXT
@@ -75,12 +76,12 @@ def run_round(conn, pairs):
             good += 1
             rows.append((ts, inst, dw["mid"], dw["spread_bps"],
                          dw["bid_depth_usdt"], dw["ask_depth_usdt"],
-                         vol_by_inst.get(inst), int(dw["covers_band"]), 1,
+                         vol_by_inst.get(inst), int(dw["book_truncated"]), 1,
                          ob["latency_ms"], None))
 
     conn.executemany(
         "INSERT INTO snapshots (ts, inst, mid, spread_bps, bid_depth_2pct_usdt,"
-        " ask_depth_2pct_usdt, vol24h_usdt, covers_band, ok, latency_ms, error)"
+        " ask_depth_2pct_usdt, vol24h_usdt, book_truncated, ok, latency_ms, error)"
         " VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
     conn.commit()
 

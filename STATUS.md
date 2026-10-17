@@ -1,6 +1,6 @@
 # STATUS — Arf
 
-Son güncelleme: 2026-10-17 13:05 — Claude (veri katmanı oturumu)
+Son güncelleme: 2026-10-17 13:15 — Claude (hisse tokeni filtresi + book_truncated)
 
 ## Adımlar
 | # | Adım | Durum | Not |
@@ -8,8 +8,8 @@ Son güncelleme: 2026-10-17 13:05 — Claude (veri katmanı oturumu)
 | 0 | Proje iskeleti (git, venv, .env.example) | bitti | commit cfc5a4e |
 | 1 | ATK CLI kurulum + doğrulama | bitti | 1.4.8, TR sitesi; commit 5a1b43d |
 | 2 | atk_client.py | bitti | hatalı paritede ok=False, çökme yok; commit 2d20e0a |
-| 3 | pick_pairs.py → pairs.json | bitti | 20 parite, hepsi covers_band=True; commit 671a2b8 |
-| 4 | logger.py arka planda | bitti | başlangıç: 2026-10-17 13:03, PID 16027, tur ~15.5 s |
+| 3 | pick_pairs.py → pairs.json | bitti | hisse/ETF tokenleri hariç, 20 parite yeniden seçildi (13:14) |
+| 4 | logger.py arka planda | bitti | başlangıç: 2026-10-17 13:14:45, PID 20574, tur ~15 s |
 | 5 | RiskCircuitBreaker.sol + test vektörü | yapılacak | |
 | 6 | Fuji deploy | yapılacak | |
 | 7 | metrics.py | yapılacak | |
@@ -43,14 +43,23 @@ Süreler tek ölçüm (soğuk/sıcak ayrımı yapılmadı).
 - **Seviye miktarı birimi (ÖLÇÜLDÜ): BAZ varlık.** BTC ask seviyesi `0.09365591`,
   ticker `askSz = 0.09047928` ile aynı mertebe. USDT derinlik = fiyat × miktar.
 - **±%2 bant kapsaması (ÖLÇÜLDÜ, KRİTİK):** 400 seviye her zaman ±%2'ye ULAŞMIYOR.
-  - BTC-USDT (sz=400): ask yalnız **+0.121%**, bid **−0.261%** → `covers_band=False`.
-    Çok likit paritelerde 400 seviye dar bir banda sıkışıyor; ±%2 derinlik
-    ALT SINIR (kırpılmış) olarak raporlanmalı.
-  - GOAT-USDT: +331% / −99.9% → `covers_band=True` (sığ tahta, geniş seviyeler)
-  - THETA-USDT: +163% / −99.9% → True
-  - CTC-USDT: ask 55 bid 400 seviye, → True
-  Yani `covers_band=False` sığlık değil, **likit paritede kırpılma** işareti.
+  Bayrağın adı artık `book_truncated` (True = 400 seviye ±%2'ye ulaşmadı,
+  raporlanan derinlik ALT SINIR). Eski ad `covers_band` idi (anlamı tersti).
+  - BTC-USDT (sz=400): ask yalnız **+0.121%**, bid **−0.261%** →
+    `book_truncated=True`. Çok likit paritelerde 400 seviye dar bir banda
+    sıkışıyor; ±%2 derinlik ALT SINIR olarak raporlanmalı.
+  - GOAT-USDT: +331% / −99.9% → `book_truncated=False` (sığ tahta, geniş seviyeler)
+  - THETA-USDT: +163% / −99.9% → False
+  - CTC-USDT: ask 55 bid 400 seviye → False
+  Yani `book_truncated=True` sığlık değil, **likit paritede kırpılma** işareti.
   Bu yüzden metriklerde "kırpıldı" bayrağı taşınacak.
+- **Hisse/ETF tokenleri (ÖLÇÜLDÜ, 2026-10-17):** `instruments --instType SPOT`
+  çıktısında `instCategory` dağılımı `{1: 1013, 3: 167, 4: 4}`. `instCategory="3"`
+  olan 167 kaydın 143'ü `-USDT` ve hepsi `X` önekli (XAAPL, XSPY, XTSLA…).
+  Bunlar ABD borsa seansına bağlı (`openType=pre_quote`, `contTdSwTime` dolu);
+  seans kapalıyken tahta donar ve likidite rejimi ölçümü kirlenir →
+  `pick_pairs.py` içinde HARİÇ TUTULUYOR. 443 live -USDT paritenin 141'i bu
+  filtreyle düştü (seçim anında live olanlar), kalan 302.
 - **KRİTİK ÖLÇÜM: TR'de `state=live` + `-USDT` SPOT parite sayısı = 443.**
   `instruments --instType SPOT` dönen 1184 kaydın tamamı `state=live`
   (tek değer: `live`, başka state yok). 443'ünün hepsi `tickers SPOT`'ta da var.
@@ -72,26 +81,33 @@ Süreler tek ölçüm (soğuk/sıcak ayrımı yapılmadı).
 
 ## Logger
 - Komut: `nohup caffeinate -i .venv/bin/python logger.py > logger.log 2>&1 &`
-- PID: 16027 — başlangıç 2026-10-17 13:03 (yerel)
-- DB: `memory.db`, tablo `snapshots`, index `idx_snapshots_inst_ts (inst, ts)`
+- PID: 20574 (caffeinate 20576) — başlangıç 2026-10-17 13:14:45 (yerel, +03)
+- Önceki çalıştırma: PID 16027, 13:03–13:13, 240 satır (12 tur) → DB
+  `memory_v1.db` olarak saklandı (silinmedi, eski şema `covers_band` ile).
+- DB: `memory.db` (yeni şema, `book_truncated`), tablo `snapshots`,
+  index `idx_snapshots_inst_ts (inst, ts)`
 - Tur süresi ÖLÇÜLDÜ: ~15.5 s (20 parite × 1 orderbook + 1 tickers) → 60 s aralığı rahat
 - Durum kontrolü: `.venv/bin/python logger.py --status`
 
 ## Açık sorunlar
-- **Hisse tokenleri seçime girdi (KARAR GEREKİYOR):** `XMSFT-USDT`, `XAPLD-USDT`,
-  `XEWY-USDT` → `instCategory=3`, `openType=pre_quote`, `contTdSwTime` dolu.
-  ABD borsa seansına bağlı olabilirler; seans kapalıyken tahta donarsa likidite
-  rejimi ölçümü kirlenir. Spec'teki hariç tutma listesinde yoktu, bu yüzden
-  ÇIKARILMADI. Karar verilirse `pick_pairs.py` içine `instCategory != "3"`
-  filtresi eklenip yeniden seçim yapılır.
 - `state` alanının `live` dışındaki değerleri TR'de hiç görülmedi → filtre
   pratikte etkisiz ama korunuyor.
+
+## Kapanan sorunlar
+- **Hisse tokenleri (KAPANDI 13:14):** `instCategory=3` filtresi eklendi,
+  pariteler yeniden seçildi. Eski seçimdeki `XMSFT-USDT`, `XAPLD-USDT`,
+  `XEWY-USDT` artık listede yok.
 
 ## Kararlar / sapmalar
 - Hacim alanı olarak `volCcy24h` (USDT) kullanılıyor; `vol24h` baz cinsinden.
 - `orderbook --sz` her çağrıda 400 (ölçülen üst sınır).
-- `covers_band=False` artık "sığ tahta" değil **"400 seviye ±%2'ye yetmedi,
-  derinlik alt sınırdır"** anlamında; BTC-USDT'de böyle (ask +0.12%, bid −0.26%).
-  Seçilen 20 paritenin hepsi `covers_band=True`.
-- Yüzdelik %40–70 dilimi 436 paritenin 174..305 arası; 20 parite eşit aralıkla
-  (deterministik `round(i*step)`).
+- Bayrak adı `covers_band` → **`book_truncated`** (anlam ters çevrildi:
+  True = 400 seviye ±%2'ye ulaşmadı, raporlanan derinlik ALT SINIR).
+  atk_client, pick_pairs, logger ve DB şeması güncellendi; eski DB
+  `memory_v1.db` olarak duruyor.
+- Hisse/ETF tokenleri (`instCategory="3"`) seçimden hariç.
+- Yüzdelik %40–70 dilimi: filtreden geçen 295 paritenin 118..206 arası (88
+  parite); 20 parite eşit aralıkla (deterministik `round(i*step)`).
+- Yeni 20 parite (13:14, hacim 51K–358K USDT): ATOM, NES, ZBCN, 2Z, UMA,
+  OKSOL, AVNT, OFC, KAITO, ENS, ENJ, RE, VELODROME, FLOKI, WCT, SOPH, ROBO,
+  API3, IRYS, BIGTIME (hepsi `-USDT`, hepsi `book_truncated=False`).

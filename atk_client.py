@@ -112,8 +112,9 @@ def depth_within(book, pct=0.02):
     """Tahtanin +-pct bandindaki likiditeyi USDT cinsinden toplar.
 
     USDT derinlik = fiyat x miktar (miktar BAZ cinsinden, OLCULDU).
-    covers_band: donen 400 seviye bandin ucuna ULASTI mi. False ise
-    derinlik ALT SINIR'dir (tahta kirpildi) -- likit paritelerde normal.
+    book_truncated: donen 400 seviye bandin ucuna ULASMADI mi.
+    True ise raporlanan derinlik ALT SINIR'dir (tahta kirpildi) --
+    likit paritelerde normal, sigligin isareti DEGIL.
     """
     if not book:
         return None
@@ -143,7 +144,7 @@ def depth_within(book, pct=0.02):
         "spread_bps": (best_ask - best_bid) / mid * 10000,
         "bid_depth_usdt": bid_depth,
         "ask_depth_usdt": ask_depth,
-        "covers_band": ask_covers and bid_covers,
+        "book_truncated": not (ask_covers and bid_covers),
         "levels": (len(asks), len(bids)),
     }
 
@@ -167,7 +168,7 @@ def _demo(inst):
                   f"seviye={dw['levels']}")
             print(f"  bid_depth_2pct={dw['bid_depth_usdt']:,.0f} USDT  "
                   f"ask_depth_2pct={dw['ask_depth_usdt']:,.0f} USDT  "
-                  f"covers_band={dw['covers_band']}")
+                  f"book_truncated={dw['book_truncated']}")
 
 
 if __name__ == "__main__":

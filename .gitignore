@@ -5,3 +5,5 @@ memory.db-*
 *.log
 __pycache__/
 .DS_Store
+memory_v1.db
+memory_v1.db-*

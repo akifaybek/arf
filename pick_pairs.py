@@ -1,11 +1,11 @@
 """
 pick_pairs.py — gun boyu SABIT kalacak 20 USDT SPOT paritesini secer.
 
-Secim deterministik: live -USDT pariteler, stablecoin ve kaldiracli tokenler
-cikarilir, 24s USDT hacmine (volCcy24h) gore buyukten kucuge sirlanir ve
-%40-%70 yuzdelik diliminden esit arayla 20 parite alinir (alt-orta dilim).
-Her parite icin tahta bir kez cekilir, covers_band bayragi kaydedilir.
-Sonuc pairs.json'a yazilir. Global siteye ASLA gecilmez.
+Secim deterministik: live -USDT pariteler, stablecoin, kaldiracli tokenler ve
+hisse/ETF tokenleri cikarilir, 24s USDT hacmine (volCcy24h) gore buyukten
+kucuge sirlanir ve %40-%70 yuzdelik diliminden esit arayla 20 parite alinir
+(alt-orta dilim). Her parite icin tahta bir kez cekilir, book_truncated
+bayragi kaydedilir. Sonuc pairs.json'a yazilir. Global siteye ASLA gecilmez.
 """
 
 import json
@@ -28,6 +28,15 @@ STABLE_BASES = {
 # Kaldiracli token adlandirmalari (OKX'te 3L/3S/5L/5S/UP/DOWN sonekleri)
 LEVERAGED_SUFFIXES = ("3L", "3S", "5L", "5S", "UP", "DOWN")
 
+# Hisse/ETF tokenleri (instCategory == "3", ornek XAAPL-USDT, XSPY-USDT).
+# HARIC TUTULUYOR: bu tahtalar ABD borsa SEANSINA bagli; seans kapaliyken
+# tahta donar / openType=pre_quote olur. Donmus tahta likidite rejimi
+# olcumunu kirletir (derinlik degisimi ve kayma sahte sabit gorunur), bu
+# yuzden epizodik hafizaya hic girmemeleri gerekiyor.
+# OLCULDU (2026-10-17, TR): instCategory dagilimi {1: 1013, 3: 167, 4: 4};
+# 167 kaydin 143'u -USDT ve hepsi "X" onekli.
+STOCK_TOKEN_CATEGORY = "3"
+
 
 def is_leveraged(base):
     return any(base.endswith(s) for s in LEVERAGED_SUFFIXES)
@@ -38,12 +47,18 @@ def pick():
     inst = atk_client.get_instruments_spot()
     if not inst["ok"]:
         raise SystemExit(f"instruments cekilemedi: {inst['error']}")
-    live = {
-        x["instId"]
-        for x in inst["data"]
+    usdt_live = [
+        x for x in inst["data"]
         if x.get("state") == "live" and x.get("quoteCcy") == "USDT"
+    ]
+    stock_tokens = {
+        x["instId"] for x in usdt_live
+        if str(x.get("instCategory")) == STOCK_TOKEN_CATEGORY
     }
-    print(f"live -USDT SPOT parite: {len(live)}")
+    live = {x["instId"] for x in usdt_live} - stock_tokens
+    print(f"live -USDT SPOT parite: {len(usdt_live)}")
+    print(f"hisse/ETF tokeni (instCategory=3) haric tutuldu: {len(stock_tokens)}"
+          f" -> kalan {len(live)}")
 
     tick = atk_client.get_tickers_spot()
     if not tick["ok"]:
@@ -77,17 +92,17 @@ def pick():
         step = (len(band) - 1) / (TARGET_COUNT - 1)
         chosen = [band[round(i * step)] for i in range(TARGET_COUNT)]
 
-    # 4) her parite icin tahta bir kez: covers_band bayragi
+    # 4) her parite icin tahta bir kez: book_truncated bayragi
     picked_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     for r in chosen:
         ob = atk_client.get_orderbook(r["inst"])
         dw = atk_client.depth_within(ob["data"]) if ob["ok"] else None
         if dw is None:
-            r.update(covers_band=None, spread_bps=None,
+            r.update(book_truncated=None, spread_bps=None,
                      bid_depth_2pct_usdt=None, ask_depth_2pct_usdt=None,
                      note=ob["error"] or "tahta okunamadi")
         else:
-            r.update(covers_band=dw["covers_band"],
+            r.update(book_truncated=dw["book_truncated"],
                      spread_bps=round(dw["spread_bps"], 3),
                      bid_depth_2pct_usdt=round(dw["bid_depth_usdt"], 2),
                      ask_depth_2pct_usdt=round(dw["ask_depth_usdt"], 2),
@@ -99,17 +114,17 @@ def pick():
 
     # 6) tabloyu ekrana bas
     print(f"\n{'#':>2} {'parite':<14} {'vol24h_usdt':>14} {'spread_bps':>10} "
-          f"{'bid_2%':>12} {'ask_2%':>12}  covers_band")
+          f"{'bid_2%':>12} {'ask_2%':>12}  book_truncated")
     for i, r in enumerate(chosen, 1):
         sp = "-" if r["spread_bps"] is None else f"{r['spread_bps']:.2f}"
         bd = "-" if r["bid_depth_2pct_usdt"] is None else f"{r['bid_depth_2pct_usdt']:,.0f}"
         ad = "-" if r["ask_depth_2pct_usdt"] is None else f"{r['ask_depth_2pct_usdt']:,.0f}"
         print(f"{i:>2} {r['inst']:<14} {r['vol24h_usdt']:>14,.0f} {sp:>10} "
-              f"{bd:>12} {ad:>12}  {r['covers_band']}")
+              f"{bd:>12} {ad:>12}  {r['book_truncated']}")
 
-    shallow = [r["inst"] for r in chosen if r["covers_band"] is False]
-    print(f"\ncovers_band=False (tahta +-%2'ye ulasmiyor, derinlik ALT SINIR): "
-          f"{shallow if shallow else 'yok'}")
+    truncated = [r["inst"] for r in chosen if r["book_truncated"] is True]
+    print(f"\nbook_truncated=True (400 seviye +-%2'ye ulasmadi, derinlik ALT SINIR): "
+          f"{truncated if truncated else 'yok'}")
     print(f"{len(chosen)} parite -> {OUTPUT} ({picked_at})")
 
 
