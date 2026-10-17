@@ -1,0 +1,4 @@
+# Arf bagimliliklari
+# Veri katmani (atk_client, pick_pairs, logger) sadece standart kutuphane
+# kullanir: subprocess, json, sqlite3, statistics, time.
+# Sonraki adimlarda eklenecek: web3, streamlit, LLM istemcisi.
