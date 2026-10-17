@@ -143,13 +143,20 @@ def test_scene_error_does_not_crash(monkeypatch):
 
 def test_onchain_proofs_are_real_hashes():
     """Kanit listesi yalnizca gercek 32 baytlik tx hash'leri icermeli."""
-    assert len(app.ONCHAIN_PROOFS) >= 5
+    assert len(app.ONCHAIN_PROOFS) >= 7
+    hashes = set()
     for label, tx in app.ONCHAIN_PROOFS:
         assert tx.startswith("0x") and len(tx) == 66, label
-        int(tx, 16)  # gecerli hex
-    # eth_call ile dogrulanan kontroller hash'siz listelenir (uydurma yok)
-    names = [n for n, _ in app.SIMULATED_ONLY]
-    assert "AlreadyUsed" in names and "StaleScore" in names
+        int(tx, 16)              # gecerli hex
+        hashes.add(tx)
+    assert len(hashes) == len(app.ONCHAIN_PROOFS), "ayni hash iki kez listelenmis"
+    # Kontratin her revert yolu icin gercek bir tx olmali
+    etiketler = " ".join(n for n, _ in app.ONCHAIN_PROOFS)
+    for beklenen in ("IntentApproved", "ExceedsSafeSize", "BadSigner",
+                     "AlreadyUsed", "StaleScore"):
+        assert beklenen in etiketler, f"{beklenen} kaniti listede yok"
+    # tx'siz dogrulanan kontroller ayri listede (uydurma hash yok)
+    assert isinstance(app.SIMULATED_ONLY, list)
 
 
 # =============================================================================

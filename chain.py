@@ -358,9 +358,11 @@ def format_error(err):
 # =============================================================================
 
 def execute_intent(symbol, side, amount_usdt, attestation, w3=None, url=None,
-                   force_onchain=False, dry_run=False, verbose=True):
+                   force_onchain=False, dry_run=False, gas_limit=None, verbose=True):
     """Imzali skoru kontrata goturur.
 
+    gas_limit     -> verilirse gas TAHMINI YAPILMAZ, bu sabit limit kullanilir
+                     (kanit tx'lerinde estimate_gas atlanir).
     dry_run=True  -> SADECE eth_call; sonuc ne olursa olsun tx GONDERILMEZ
                      (status: SIMULATED_OK / SIMULATED_REVERT).
     dry_run=False -> once eth_call, sonra:
@@ -440,7 +442,9 @@ def execute_intent(symbol, side, amount_usdt, attestation, w3=None, url=None,
         return result
 
     # --- 2) tx gonderimi ----------------------------------------------------
-    if sim_ok:
+    if gas_limit is not None:
+        gas_limit = int(gas_limit)          # sabit: tahmin yok
+    elif sim_ok:
         gas_limit = int(fn.estimate_gas({"from": trader.address}) * 1.25)
     else:
         gas_limit = FORCE_GAS_LIMIT  # tahmin yapilmaz, revert zincire yazilir

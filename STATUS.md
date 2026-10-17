@@ -1,6 +1,6 @@
 # STATUS — Arf
 
-Son güncelleme: 2026-10-17 17:15 — Claude (Streamlit tarayıcı hataları: .env/ABI yolları mutlak)
+Son güncelleme: 2026-10-17 17:30 — Claude (AlreadyUsed + StaleScore zincirde kanıtlandı)
 
 ## Adımlar
 | # | Adım | Durum | Not |
@@ -104,6 +104,29 @@ Süreler tek ölçüm (soğuk/sıcak ayrımı yapılmadı).
   Ayrıca `test/vector_fuji.json` (sabit girdiler, canlı adres):
   `0xadf82b9099ad37b46aff3b88684ac3618721d121e987cf706b0a6d3d23fc261c`
   — zincirden okunan değerle aynı.
+
+### Kontratın bütün revert yolları ZİNCİRDE (2026-10-17 ~17:25)
+Adım 7'de eksik iki kanıt da gerçek tx'e dönüştürüldü. Hepsi **sabit 300.000
+gas** ile gönderildi (`estimate_gas` atlandı, `gas_limit` parametresi).
+
+| Kontrol | tx | Sonuç | Onay |
+|---|---|---|---|
+| IntentApproved (hazırlık, 1 USDT) | `0x0b4cfc04d3c91d5fe0fe09667d66eb07ef1bc630c8cec6b13ab47fe07ad23530` | CONFIRMED, riskScore 2009, maxSafeSize 4789335958 | 1590 ms |
+| **AlreadyUsed** | `0xa1ad95144f813310c2b6c96457b35be32f71c3290f53d632f2b46baffbf99a80` | REVERTED, `AlreadyUsed(digest=0x7a43c016…2f18)` | 1522 ms |
+| **StaleScore** | `0x0b29025776a1f03d8304fd01144ebe88741fe1d760ec405e5b8ebac9b91233a3` | REVERTED, `StaleScore(1792245508, 1792247164)` | 2136 ms |
+
+- **Kontrol sırası ölçüldü:** eski (1655 sn) ama **kullanılmış** bir onayın
+  calldata'sı aynen gönderilince `AlreadyUsed` değil **`StaleScore`** dönüyor —
+  kontrat tazeliği `used` kontrolünden önce bakıyor. Bu yüzden `AlreadyUsed`
+  kanıtı için taze bir onayın önce harcanması gerekti (hazırlık tx'i), tekrar
+  gönderim 3 sn sonra yapıldı.
+- tx3 göndermeden önce `eth_call` ile sebep doğrulandı
+  (`StaleScore(1792245508, 1792247161)`); beklenen sebep çıkmasa tx atılmayacaktı.
+- **Gas gözlemi (DOĞRULANDI, önceki açık soru):** sabit 300.000 limitle
+  gönderilen tx'lerde — **başarılı olan dahil** — makbuzda `gasUsed` **150.000**
+  görünüyor (limitin yarısı). Yani bu 150.000 gerçek tüketim değil, sabit
+  limitin bir yansıması; tahminli gönderimde aynı mutlu yol **60.855** gas
+  harcıyordu. "Revert pahalı/ucuz" yorumu bu sayıdan çıkarılamaz.
 
 ### RPC durumu (ÖLÇÜLDÜ, 2026-10-17 hotspot)
 | Uç nokta | Sonuç |
@@ -399,9 +422,10 @@ Bu ölçümlerin kodda karşılığı:
   `FUJI_RPC_URLS=https://avalanche-fuji-c-chain-rpc.publicnode.com` satırı
   eklenmeli (Akif ekleyecek); şu an komut satırından geçiliyor. Demo günü
   bu uç nokta da düşerse yeni aday aranması gerekir.
-- Revert eden tx sabit 300.000 gas limitiyle gidiyor ve **150.000 gas**
-  harcanmış görünüyor (yarısı). Sahne için sorun değil, ama "revert ucuz"
-  denemez; neden yarısı olduğu DOĞRULANMADI.
+- ~~Revert eden tx'te 150.000 gas görünmesi~~ **AÇIKLANDI (adım 7):** sabit
+  300.000 limitle gönderilen **başarılı** tx'te de `gasUsed` 150.000 çıkıyor →
+  sayı sabit limitin yansıması, gerçek tüketim değil (tahminli mutlu yol
+  60.855 gas). Kanıt tx'lerinde gas yorumu yapılmıyor.
 - `test/vector_fuji.json` canlı adres için üretildi ama imzası **anvil test
   anahtarıyla** (bilerek: gerçek oracle imzası repoya girmez) → o dosyadaki
   imza Fuji'de `BadSigner` verir, digest'i ise zincirle birebir aynı.

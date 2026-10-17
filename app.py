@@ -51,8 +51,7 @@ DECISION_STYLE = {
 EXPLORER = "https://explorer-test.avax.network/c-chain/tx/{}"
 
 # Zincirde GERCEKTEN dogrulanmis kanitlar (STATUS.md'den; sabit liste).
-# AlreadyUsed ve StaleScore yalnizca eth_call ile gosterildi, tx YOK —
-# oldugu gibi yaziliyor, uydurma hash konmuyor.
+# Besinin de tx hash'i gercek; uydurma hash YOK.
 ONCHAIN_PROOFS = [
     ("IntentApproved (fuji_smoke)",
      "0x7bef94f297de147acf74dce1139eca659e982e2ae51a51f013b2d89071ba5173"),
@@ -64,11 +63,14 @@ ONCHAIN_PROOFS = [
      "0x80aeb84999c64df29bec84dccedd6addb3b1c22adac4e69abd74fc29eb2667a6"),
     ("BadSigner (fail-closed sahnesi)",
      "0x0b05e13fa25cb379d62f715820266a32db08250b40b19e2474940b5311ede98e"),
+    ("AlreadyUsed (aynı imza ikinci kez)",
+     "0xa1ad95144f813310c2b6c96457b35be32f71c3290f53d632f2b46baffbf99a80"),
+    ("StaleScore (skor 1655 sn eski)",
+     "0x0b29025776a1f03d8304fd01144ebe88741fe1d760ec405e5b8ebac9b91233a3"),
 ]
-SIMULATED_ONLY = [
-    ("AlreadyUsed", "aynı imza ikinci kez — eth_call ile doğrulandı, tx gönderilmedi"),
-    ("StaleScore", "skor 400 sn eski — eth_call ile doğrulandı, tx gönderilmedi"),
-]
+# Zincirde kanitlanmayan kontrol kalmadi; liste bosaldi ama yapisi duruyor
+# (ileride tx'siz dogrulanan bir sey olursa buraya yazilir).
+SIMULATED_ONLY = []
 
 
 # =============================================================================
@@ -256,9 +258,12 @@ def render_right(out):
     st.subheader("Zincirde doğrulanmış kanıtlar")
     for label, tx in ONCHAIN_PROOFS:
         st.markdown(f"- {label}: [{tx[:18]}…]({EXPLORER.format(tx)})")
-    st.caption("Yalnızca eth_call ile doğrulanan (tx gönderilmeyen) kontroller:")
-    for label, note in SIMULATED_ONLY:
-        st.caption(f"· {label} — {note}")
+    if SIMULATED_ONLY:
+        st.caption("Yalnızca eth_call ile doğrulanan (tx gönderilmeyen) kontroller:")
+        for label, note in SIMULATED_ONLY:
+            st.caption(f"· {label} — {note}")
+    else:
+        st.caption("Kontratın bütün revert yolları zincirde doğrulandı.")
 
 
 # =============================================================================
