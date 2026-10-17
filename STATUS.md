@@ -1,6 +1,6 @@
 # STATUS — Arf
 
-Son güncelleme: 2026-10-17 15:10 — Claude (Fuji entegrasyonu: chain.py + 4 canlı senaryo)
+Son güncelleme: 2026-10-17 15:55 — Claude (agent.py + llm.py: LLM planlayıcı canlı)
 
 ## Adımlar
 | # | Adım | Durum | Not |
@@ -13,8 +13,8 @@ Son güncelleme: 2026-10-17 15:10 — Claude (Fuji entegrasyonu: chain.py + 4 ca
 | 5 | RiskCircuitBreaker.sol + signer.py + test vektörü | bitti | `forge test`: 14/14 geçti; Python↔Solidity digest aynı |
 | 6 | Fuji deploy + chain.py entegrasyonu | bitti | 0xddE4C7…591159; 4 senaryo canlı doğrulandı (2 tx) |
 | 7 | metrics.py + test_metrics.py + scan_demo.py | bitti | `pytest`: 34/34 geçti; demo adayı 6 parite |
-| 8 | agent.py döngüsü | yapılacak | |
-| 9 | signer.py → kontrat uçtan uca | yapılacak | |
+| 8 | agent.py + llm.py döngüsü | bitti | LLM planlayıcı canlı; 25 agent testi; 2 gerçek tx |
+| 9 | signer.py → kontrat uçtan uca | bitti | agent → imza → Fuji: ONAY ve BOL sahneleri zincirde |
 | 10 | Trader niyeti + revert sahnesi | yapılacak | |
 | 11 | Fail-closed sahnesi | yapılacak | |
 | 12 | (ops.) mcp_server.py | yapılacak | |
@@ -208,6 +208,58 @@ BIGTIME (6.216). Diğer 14'ü 10k'yı da kaldırıyor (RE-USDT 186K'ya kadar).
 - `scan_demo.py` aday sıralaması: önce `riskScore ≤ 5000`, sonra 1k/10k
   sınırlarına en büyük pay.
 
+## Agent + LLM (adım 8 — agent.py, llm.py)
+
+### ÖLÇÜLEN — LLM sağlayıcı
+| Konu | Ölçüm |
+|---|---|
+| SDK | `google-genai` **2.31.0** (paket kaynağından doğrulandı: `client.models.generate_content`, `response.function_calls`, `types.Part.from_function_response`, `parameters_json_schema`) |
+| `gemini-2.5-flash` | **KULLANILAMAZ**: `models.list` listeliyor ama `generateContent` **404** → "no longer available to new users, use models/gemini-3.8-flash". Liste yeterli kanıt değil. |
+| `gemini-2.5-flash-lite` | aynı şekilde 404 |
+| `gemini-3.8-flash` | function calling **ÇALIŞIYOR**; 5 turun 4'ü tam başarılı, 1'i `503 UNAVAILABLE` ("high demand"). Gecikme 2129–5695 ms (ort. 3822), tur ~240 token. |
+| `gemini-3.5-flash` / `-lite` / `3.7-flash` | üçü de function calling yapıyor; 1701 / 809 / 6129 ms |
+| **Ücretsiz katman kotası** | **günlük 20 istek, MODEL BAŞINA** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). 3.8-flash kotası 2026-10-17'de tükendi; API "11s 12dk sonra" dedi. |
+| `thought_signature` | Gemini 3.x, modelin function-call turu geçmişe **aynen** konmazsa `400 INVALID_ARGUMENT` veriyor. Resmi doküman (ai.google.dev/gemini-api/docs/thinking#signatures) ile doğrulandı → ham `Content` `_raw` olarak taşınıyor. |
+
+Bu ölçümlerin kodda karşılığı:
+- **Model zinciri** (`LLM_MODEL` → `LLM_MODELS` → varsayılan
+  `gemini-3.5-flash, gemini-3.5-flash-lite, gemini-3.8-flash`): kota/404'te
+  sonraki modele geçilir. Kota model başına olduğu için bu gerçek bir yedek.
+- **Günlük kota hatasında tekrar denenmez** (`FATAL_SUBSTRINGS`): tekrar denemek
+  hem anlamsız (11 saat) hem de her deneme kotadan bir istek daha yakıyor.
+  Geçici hatalar (503/500/504, dakika başı 429) 2 kez, artan beklemeyle denenir.
+
+### ÖLÇÜLEN — agent döngüsü
+- `pytest`: **59 test geçti** (34 metrics + 25 agent). Agent testleri **ağsız**:
+  sahte LLM sağlayıcı + sahte veri kaynakları, imza anvil TEST anahtarıyla.
+- Canlı LLM planlayıcı koşusu (gemini-3.5-flash): **4 istek, 4 araç çağrısı**
+  (`get_orderbook → compute_metric → get_candles → sign_score`), final JSON
+  şemaya uygun geldi, LLM önerisi ONAY = deterministik karar. 12.563 ms toplam.
+- **2 GERÇEK tx (agent → imza → Fuji):**
+  | Koşu | Karar | Zincir | Gas | Onay | tx |
+  |---|---|---|---|---|---|
+  | `buy 1000` | ONAY | **CONFIRMED**, IntentApproved(amount=1000000000, riskScore=1194, maxSafeSize=4689869741) | 60.855 | 2311 ms | `0xa5798d59…acbbe` |
+  | `buy 10000 --force-onchain` | BOL (3 parça) | **REVERTED**, `ExceedsSafeSize(10000000000, 4438330755, 3)` | 150.000 | 1738 ms | `0x80aeb849…67a6` |
+- Fail-closed yolu canlıda da görüldü: kota bitince `LLM dongusu kesildi —
+  deterministik plana geciliyor` notu düşüp aynı araçları sabit sırayla
+  çalıştırdı, karar ve imza yine üretildi (ONAY, riskScore 1990).
+
+### VARSAYIMLAR (agent)
+- `TOOL_BUDGET = 12` araç çağrısı; aşılırsa döngü kesilir, karar deterministik.
+- `REFRESH_AGE_S = 60`: final karardan önce metrik bundan eskiyse yeniden ölçülür
+  (LLM turları ~3–6 sn sürdüğü için veri bayatlayabiliyor).
+- Muhafazakârlık sırası `VERI_YETERSIZ > RED > BOL > ONAY`; LLM önerisi yalnızca
+  daha muhafazakârsa kazanır, gevşekse trace'e "reddedildi" yazılır.
+- Final imza karardan **sonra** taze timestamp'le yeniden üretilir; LLM'in
+  `sign_score` ile tetiklediği digest trace'te ayrı görünür (sayılar aynı
+  deterministik ölçümden gelir).
+- `RED` kararında da imza üretilir — kontrat `RiskTooHigh` ile reddetsin diye
+  (zincir son söz sahibi).
+- LLM'e giden tahta ÖZETİ: mid, spread, ±%0.5/%1/%2 derinlik, book_truncated,
+  data_age_s. Ham 400 seviye LLM'e gönderilmez.
+- Sembol doğrulama: `^[A-Z0-9]+-USDT$` + SPOT live listesi + hisse/ETF tokeni
+  (`instCategory=3`) hariç. Geçersiz sembolde LLM'e hiç gidilmez.
+
 ## Logger
 - Komut: `nohup caffeinate -i .venv/bin/python logger.py > logger.log 2>&1 &`
 - PID: 20574 (caffeinate 20576) — başlangıç 2026-10-17 13:14:45 (yerel, +03)
@@ -231,6 +283,13 @@ BIGTIME (6.216). Diğer 14'ü 10k'yı da kaldırıyor (RE-USDT 186K'ya kadar).
 - `test/vector_fuji.json` canlı adres için üretildi ama imzası **anvil test
   anahtarıyla** (bilerek: gerçek oracle imzası repoya girmez) → o dosyadaki
   imza Fuji'de `BadSigner` verir, digest'i ise zincirle birebir aynı.
+- **LLM kotası demo riski:** ücretsiz katman model başına günlük 20 istek.
+  Bir agent koşusu 3–5 istek yakıyor → model başına ~4–6 koşu/gün.
+  `gemini-3.8-flash` kotası bugün doldu; zincir `gemini-3.5-flash` ile
+  devam ediyor. Demo öncesi gereksiz koşu yapılmamalı; faturalandırma açılırsa
+  sınır kalkar. Kota bitse bile ürün çalışıyor (deterministik plan).
+- Diğer modellerin günlük kotasının da 20 olup olmadığı DOĞRULANMADI
+  (yalnızca 3.8-flash'ın hata mesajında `quotaValue: 20` görüldü).
 
 ## Kapanan sorunlar
 - **Hisse tokenleri (KAPANDI 13:14):** `instCategory=3` filtresi eklendi,

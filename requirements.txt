@@ -14,7 +14,10 @@ rlp==5.0.0
 web3==8.0.0
 python-dotenv==1.2.4
 
-# Testler (test_metrics.py)
+# LLM planlayici (llm.py) — Gemini resmi SDK'si
+google-genai==2.31.0
+
+# Testler (test_metrics.py, test_agent.py)
 pytest==9.1.1
 
 # Sonraki adimlarda eklenecek: web3, streamlit, LLM istemcisi.
