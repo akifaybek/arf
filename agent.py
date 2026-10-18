@@ -694,7 +694,7 @@ def run_check(symbol, side, size_usdt, provider=None, deps=None, use_llm=True,
     }
 
 
-# Dis arayuz adi (CLAUDE.md: check_execution)
+# Dis arayuz adi: check_execution
 check_execution = run_check
 
 

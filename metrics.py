@@ -32,7 +32,7 @@ import atk_client
 # MUTLAK yol: Streamlit baska bir calisma dizininden baslatilabilir
 DB_PATH = str(Path(__file__).resolve().parent / "memory.db")
 
-# Veri bu yastan eskiyse imza uretilmez (CLAUDE.md madde 5)
+# Veri bu yastan eskiyse yeni imza uretilmez.
 MAX_DATA_AGE_S = 120
 
 # Hafizada bundan az nokta varsa z bilesenleri hesaplanmaz
@@ -42,7 +42,7 @@ MIN_MEMORY_POINTS = 30
 MEMORY_LOOKBACK = 120
 
 # Kayma esigi: bunun altinda kalan en buyuk tutar "guvenli" sayilir
-DEFAULT_MAX_SLIP_BPS = 100  # %1 (CLAUDE.md madde 4)
+DEFAULT_MAX_SLIP_BPS = 100  # %1 kayma siniri
 
 # --- VARSAYIM: risk skoru agirliklari (toplam 1.0) ---------------------------
 # Hicbiri olculmus bir parametre degil; aciklanabilir olsun diye duz dogrusal.

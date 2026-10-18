@@ -80,7 +80,7 @@ def kv(label, value, color=None):
 
 
 def sim_label(text):
-    """Buyuk SIMULASYON etiketi — juriye bunun sahne oldugu net olsun."""
+    """Veri kesintisi senaryosunu acikca SIMULASYON olarak etiketler."""
     line = "!" * WIDTH
     print()
     print(yellow(line))

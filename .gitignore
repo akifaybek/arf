@@ -11,3 +11,18 @@ node_modules/
 out/
 cache/
 broadcast/
+
+# Local credentials and runtime data
+.env.*
+!.env.example
+.pytest_cache/
+*.pyc
+
+# Local drafting and generated presentation files
+CLAUDE.md
+STATUS.md
+output/
+tmp/
+runs/
+presentation/*
+!presentation/Arf.pptx

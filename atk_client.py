@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 
-# Dogrulanmis sinirlar (STATUS.md > Dogrulanmis ATK komutlari)
+# ATK CLI sinirlari: docs/validation.md
 ORDERBOOK_MAX_SZ = 400  # --sz 401 ve ustu: "Parameter sz error" (Code 51000)
 CLI_TIMEOUT_S = 10
 

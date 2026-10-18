@@ -54,7 +54,7 @@ DECISION_STYLE = {
 
 EXPLORER = "https://explorer-test.avax.network/c-chain/tx/{}"
 
-# Zincirde GERCEKTEN dogrulanmis kanitlar (STATUS.md'den; sabit liste).
+# Fuji islem kanitlari: docs/validation.md (sabit liste).
 # Besinin de tx hash'i gercek; uydurma hash YOK.
 ONCHAIN_PROOFS = [
     ("IntentApproved (fuji_smoke)",
